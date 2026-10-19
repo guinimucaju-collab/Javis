@@ -1,0 +1,44 @@
+JAVIS — PLANO BISMARCK
+======================
+
+O QUE É
+Javis é um aplicativo de janela para registrar textos e relatórios, analisar o Plano Bismarck, revisar decisões, sugerir próximos passos e acompanhar os resultados de ações.
+
+PRIVACIDADE
+- Notas, decisões, ações, análises e o plano editável ficam no computador em %LOCALAPPDATA%\JavisBismarck.
+- A análise usa o Ollama local em 127.0.0.1. O texto não é enviado a serviços de IA na internet.
+- A análise automática local fica ligada por padrão, como você pediu. Você pode desligá-la na tela inicial.
+- O Javis só sabe o que você registra ou importa. Para acompanhar o efeito de uma ação, registre o resultado observado e, se útil, marque uma data para rever.
+- Atualizações sugeridas não mudam o plano até você aprová-las. Cada salvamento do plano guarda a versão anterior.
+
+ABRIR
+- Use o atalho “Javis — Plano Bismarck” na Área de Trabalho.
+- Se ainda não houver atalho, execute Criar_Atalho_Javis.ps1 uma vez. O inicializador abre a janela sem console.
+- Se a janela avisar que o Ollama está desconectado, abra o aplicativo Ollama.
+
+PREPARAR A IA LOCAL UMA VEZ
+1. Instale o Ollama para Windows: https://ollama.com/download/windows
+2. Neste notebook com 8 GB de RAM, se a prioridade é velocidade, baixe uma vez pelo PowerShell: ollama pull qwen3:1.7b
+3. Quando o download terminar, abra o Javis pelo atalho. Na primeira abertura, ele prepara o modelo pequeno para acelerar as análises seguintes.
+4. Na tela inicial, clique em “Atualizar modelos” e escolha o modelo instalado para análise aprofundada. A escolha fica salva para as próximas vezes.
+
+O qwen3:1.7b ocupa cerca de 1,4 GB no Ollama e será usado nas triagens automáticas quando estiver instalado. Um modelo 4B pode oferecer análises mais capazes, mas tende a demorar mais no notebook com 8 GB; escolha-o para revisões aprofundadas quando necessário. Modelos maiores não são a solução para lentidão neste equipamento.
+
+USO DO DIA A DIA
+1. Em “Início e análise”, escreva uma nota, pergunta ou relatório; use “Abrir relatório ou arquivo” para importar TXT, MD, CSV, JSON, DOCX ou PDF.
+2. Com a opção automática ligada, “Guardar registro” salva o conteúdo e inicia uma revisão rápida local. O Javis compara com registros e ações recentes, mesmo que você não cite a possível relação.
+3. Se encontrar uma ligação possível, ele mostra os IDs e pede confirmação. Só depois de você confirmar, relaciona os acontecimentos ou acrescenta o relato aos resultados da ação. Uma sequência temporal é hipótese, não prova de causa.
+4. “Analisar rápido” dá uma resposta curta; “Análise aprofundada” faz uma revisão mais completa. As respostas aparecem conforme são geradas.
+5. Leia a análise. Use “Aprovar atualização do plano” somente depois de revisar a proposta.
+6. Em “Ações e resultados”, registre a ação e o resultado esperado. Em “Decisões”, registre apenas decisões confirmadas. Em “Registros”, pesquise, abra e analise novamente textos salvos.
+
+ARQUIVOS LOCAIS
+- Dados e plano: %LOCALAPPDATA%\JavisBismarck
+- Cópias anteriores do plano: %LOCALAPPDATA%\JavisBismarck\versoes_plano
+- Aplicativo e inicializadores: pasta onde este guia está salvo.
+- O notebook antigo permanece como alternativa; a interface Javis.pyw é o modo normal de uso.
+
+RESPOSTAS MAIS RÁPIDAS
+O Javis usa o modelo pequeno instalado para triagens rápidas e mantém o modelo escolhido na lista para análises aprofundadas.
+
+Observação: o Javis não observa acontecimentos fora do aplicativo. Quando você guarda um relato, ele procura relações no histórico recente e pede sua confirmação antes de vincular ou atualizar uma ação.
