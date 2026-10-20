@@ -1,6 +1,6 @@
-# Javis — Plano Bismarck
+# Javis 
 
-O Javis é um assistente local com interface para servir como segundo cérebro operacional do Plano Bismarck. Ele recebe notas, perguntas, relatos e relatórios; analisa o contexto; sugere próximos passos; ajuda a revisar decisões; e acompanha resultados de ações registradas.
+O Javis é um assistente local com interface para servir como segundo cérebro operacional. Ele recebe notas, perguntas, relatos e relatórios; analisa o contexto; sugere próximos passos; ajuda a revisar decisões; e acompanha resultados de ações registradas.
 
 ## Privacidade
 
