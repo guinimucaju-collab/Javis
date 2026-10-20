@@ -106,6 +106,28 @@ def darken(rgb: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
     return mix(rgb, (0, 0, 0), amount)
 
 
+def is_light(theme: dict) -> bool:
+    r, g, b = theme["bg"]
+    return (r * 299 + g * 587 + b * 114) / 1000 > 150
+
+
+def glass_surface(theme: dict) -> tuple[int, int, int]:
+    """Cor chapada do miolo do vidro.
+
+    Depende só do tema (nunca do tamanho da janela nem de amostragem), então
+    todos os widgets recebem exatamente o mesmo tom e não há faixas nem emendas.
+    """
+    base = mix(theme["surface"], theme["accent"], 0.10)
+    tint = float(theme.get("glass_tint", 0.08))
+    return lighten(base, tint * (0.6 if is_light(theme) else 0.9))
+
+
+def glass_well(theme: dict) -> tuple[int, int, int]:
+    """Cor dos campos de texto: um \"poço\" dentro do vidro."""
+    color = glass_surface(theme)
+    return lighten(color, 0.55) if is_light(theme) else darken(color, 0.22)
+
+
 def theme_names() -> list[str]:
     return list(THEMES.keys())
 

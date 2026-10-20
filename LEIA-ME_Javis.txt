@@ -49,7 +49,7 @@ ATALHOS E RECURSOS DA INTERFACE
 O VISUAL EM VIDRO
 - A janela tem um cartão translúcido sobre um fundo aurora, com cantos arredondados e borda especular.
 - O fundo é desenhado pelo próprio Javis: o Tk não sabe deixar widgets transparentes, então o vidro é montado antes e a cor dos campos é casada com a dele. O resultado é contínuo, sem emenda.
-- Se quiser o visual mais rápido, o Javis usa o numpy quando ele está instalado; sem numpy, o resultado é o mesmo, só o cálculo leva alguns décimos de segundo a mais.
+- Para ver o vidro, instale o numpy uma vez no PowerShell: py -m pip install numpy. Sem ele o Javis funciona normalmente, só com fundo liso e cartões chapados.
 
 ARQUIVO PARA ABRIR PDF (OPCIONAL)
 - TXT, MD, CSV, JSON e DOCX já abrem sem instalar nada.

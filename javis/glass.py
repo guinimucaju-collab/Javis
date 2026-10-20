@@ -1,42 +1,53 @@
-"""Motor de vidro: renderiza o fundo aurora e os painéis translúcidos.
+"""Motor de vidro: renderiza o fundo aurora e os painéis de vidro.
 
-O Tk não compõe o canal alfa de um PNG (verificado em captura de tela real:
-uma imagem semitransparente vira opaca). Por isso o vidro é *pré-composto*
-aqui: geramos o fundo aurora, tiramos uma cópia desfocada dele para dentro
-de cada painel e misturamos o branco do vidro por cima. O resultado é um
-painel que deixa ver o que está atrás — o mesmo efeito do acrylic do
-Windows, sem depender de API do sistema.
+O Tk não deixa widgets transparentes, então o vidro é pré-composto numa imagem
+que fica no Canvas de fundo. O truque que evita emendas: o miolo de cada
+painel é uma cor chapada (theme.glass_surface) e só a borda ("rim") mostra o
+fundo desfocado, com brilho de vidro, convergindo suavemente para essa cor.
+Os widgets por cima usam exatamente a mesma cor chapada.
 
-O motor usa apenas a biblioteca padrão. Se `numpy` estiver disponível, o
-cálculo é vetorizado e fica instantâneo; caso contrário, cai para um
-renderizador puro em Python (mais lento, mas com o mesmo resultado).
+Precisa de numpy. Sem ele, `compose` devolve None e a interface usa um visual
+simples (sem aurora), sem travar.
 """
 
 from __future__ import annotations
 
-import math
 import struct
 import zlib
 
-try:  # opcional: acelera muito o cálculo do fundo
-    import numpy as _np
+try:
+    import numpy as np
 except ImportError:  # pragma: no cover - depende do ambiente
-    _np = None
+    np = None
 
-from .theme import darken, hexc, lighten, mix
+from .theme import glass_surface, is_light
+
+HAS_NUMPY = np is not None
+
+_aurora_cache: dict = {}
 
 
 # --------------------------------------------------------------------------
-# PNG
+# Formatos de imagem
 # --------------------------------------------------------------------------
+
+def to_ppm(width: int, height: int, rgb: bytes) -> bytes:
+    """PPM binário: o Tk lê direto, sem compressão (bem mais rápido que PNG)."""
+    return b"P6\n%d %d\n255\n" % (width, height) + rgb
+
 
 def encode_png(width: int, height: int, rgb: bytes) -> bytes:
-    """rgb: bytes RGB, uma linha por pixel, 3 bytes por pixel."""
-    raw = bytearray()
+    """PNG RGB; só usado se o Tk recusar o PPM."""
     stride = width * 3
-    for y in range(height):
-        raw.append(0)  # filtro "none"
-        raw += rgb[y * stride:(y + 1) * stride]
+    if np is not None:
+        arr = np.frombuffer(rgb, np.uint8).reshape(height, stride)
+        raw = np.concatenate([np.zeros((height, 1), np.uint8), arr], axis=1).tobytes()
+    else:
+        out = bytearray()
+        for y in range(height):
+            out.append(0)
+            out += rgb[y * stride:(y + 1) * stride]
+        raw = bytes(out)
 
     def chunk(tag: bytes, data: bytes) -> bytes:
         return (struct.pack(">I", len(data)) + tag + data
@@ -44,409 +55,143 @@ def encode_png(width: int, height: int, rgb: bytes) -> bytes:
 
     return (b"\x89PNG\r\n\x1a\n"
             + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-            + chunk(b"IDAT", zlib.compress(bytes(raw), 6))
+            + chunk(b"IDAT", zlib.compress(raw, 1))
             + chunk(b"IEND", b""))
 
 
 # --------------------------------------------------------------------------
-# Fundo aurora
+# Peças numéricas
 # --------------------------------------------------------------------------
 
-def _aurora_numpy(width: int, height: int, theme: dict):
-    np = _np
-    yy, xx = np.mgrid[0:height, 0:width].astype(np.float32)
-    base = np.array(theme["bg"], np.float32)
-    # Os blobs são misturados com a cor base um de cada vez, em vez de
-    # somados: somar saturaria tudo em branco no tema claro e o vidro
-    # perderia a cor (virava cinza).
-    img = base.copy()
+def _aurora(width: int, height: int, theme: dict):
+    key = (theme.get("label"), width, height)
+    cached = _aurora_cache.get("last")
+    if cached and cached[0] == key:
+        return cached[1].copy()
+    xx = np.arange(width, dtype=np.float32)[None, :]
+    yy = np.arange(height, dtype=np.float32)[:, None]
+    img = np.empty((height, width, 3), np.float32)
+    img[:] = theme["bg"]
     blend = float(theme.get("blend", 1.0))
     for cx, cy, radius, color, strength in theme["blobs"]:
         dx = (xx - cx * width) / (radius * width)
         dy = (yy - cy * height) / (radius * width)
         d = np.sqrt(dx * dx + dy * dy)
-        falloff = (np.clip(1.0 - d, 0.0, 1.0) ** 2.2 * strength)[..., None]
-        img = img + (np.array(color, np.float32) - img) * falloff * blend
-    return np.clip(img, 0, 255).astype(np.uint8)
+        fall = (np.clip(1.0 - d, 0.0, 1.0) ** 2.2 * (strength * blend))[..., None]
+        img += (np.asarray(color, np.float32) - img) * fall
+    _aurora_cache["last"] = (key, img.copy())
+    return img
 
 
-def _aurora_python(width: int, height: int, theme: dict) -> bytearray:
-    """Versão sem numpy: mesma fórmula, amostra por amostra."""
-    out = bytearray(width * height * 3)
-    bg = theme["bg"]
-    blend = float(theme.get("blend", 1.0))
-    blobs = []
-    for cx, cy, radius, color, strength in theme["blobs"]:
-        blobs.append((cx * width, cy * height, radius * width, color, strength))
-    idx = 0
-    for y in range(height):
-        for x in range(width):
-            r, g, b = float(bg[0]), float(bg[1]), float(bg[2])
-            for cx, cy, radius, color, strength in blobs:
-                dx = (x - cx) / radius
-                dy = (y - cy) / radius
-                d = math.sqrt(dx * dx + dy * dy)
-                if d < 1.0:
-                    f = (1.0 - d) ** 2.2 * strength * blend
-                    r += (color[0] - r) * f
-                    g += (color[1] - g) * f
-                    b += (color[2] - b) * f
-            out[idx] = max(0, min(255, int(r)))
-            out[idx + 1] = max(0, min(255, int(g)))
-            out[idx + 2] = max(0, min(255, int(b)))
-            idx += 3
-    return out
+def _box_axis(a, r: int, axis: int):
+    """Desfoque de caixa em O(1) por pixel (soma acumulada)."""
+    n = a.shape[axis]
+    pad = [(0, 0)] * a.ndim
+    pad[axis] = (r + 1, r)
+    c = np.cumsum(np.pad(a, pad, mode="edge"), axis=axis, dtype=np.float64)
+    hi = np.take(c, np.arange(2 * r + 1, 2 * r + 1 + n), axis=axis)
+    lo = np.take(c, np.arange(0, n), axis=axis)
+    return ((hi - lo) / (2 * r + 1)).astype(np.float32)
 
 
-def render_backdrop(width: int, height: int, theme: dict) -> bytes:
-    """Devolve o PNG (RGB) do fundo aurora."""
-    width = max(1, int(width))
-    height = max(1, int(height))
-    if _np is not None:
-        arr = _aurora_numpy(width, height, theme)
-        return encode_png(width, height, arr.tobytes())
-    return encode_png(width, height, bytes(_aurora_python(width, height, theme)))
+def _blur(a, r: int, passes: int = 2):
+    for _ in range(passes):
+        a = _box_axis(_box_axis(a, r, 0), r, 1)
+    return a
 
 
-# --------------------------------------------------------------------------
-# Painel de vidro
-# --------------------------------------------------------------------------
-
-def _blur_box(data, width: int, height: int, radius: int, channels: int = 3):
-    """Desfoque de caixa separável, repetido — barato e suficiente para o vidro.
-
-    Separável significa O(r) em vez de O(r²): o custo cai de ~60s para ~0.2s
-    numa janela 1200x760 com raio 26.
-    """
-    if radius < 1:
-        return data
-    if _np is not None:
-        np = _np
-        arr = np.asarray(data, dtype=np.float32)
-        if arr.ndim == 1:
-            arr = arr.reshape(height, width, channels)
-        for _ in range(3):
-            arr = _box_blur_np(arr, radius)
-        return arr
-    # caminho puro: listas de floats
-    grid = [list(data[i * width * channels:(i + 1) * width * channels]) for i in range(height)]
-    for _ in range(3):
-        grid = _box_blur_py(grid, width, height, channels, radius)
-    flat = []
-    for row in grid:
-        flat.extend(row)
-    return flat
+def _blur_low(a, r: int, passes: int = 2, f: int = 4):
+    """Desfoque barato para coisas suaves: calcula em 1/f da resolução e amplia."""
+    h, w = a.shape[:2]
+    small = _blur(a[::f, ::f], max(1, r // f), passes)
+    big = np.repeat(np.repeat(small, f, axis=0), f, axis=1)
+    return big[:h, :w]
 
 
-def _box_blur_np(arr, radius: int):
-    """Uma passada de desfoque de caixa nas duas direções."""
-    np = _np
-    pad = np.pad(arr, ((0, 0), (radius, radius), (0, 0)), mode="edge")
-    acc = np.zeros_like(arr)
-    for dx in range(-radius, radius + 1):
-        acc += pad[:, radius + dx:radius + dx + arr.shape[1], :]
-    acc /= (2 * radius + 1)
-    pad = np.pad(acc, ((radius, radius), (0, 0), (0, 0)), mode="edge")
-    out = np.zeros_like(arr)
-    for dy in range(-radius, radius + 1):
-        out += pad[radius + dy:radius + dy + arr.shape[0], :, :]
-    out /= (2 * radius + 1)
-    return out
+def _sdf(xx, yy, x, y, w, h, r):
+    """Distância com sinal até um retângulo arredondado (<0 dentro, 0 na borda)."""
+    qx = np.abs(xx + 0.5 - (x + w / 2)) - (w / 2 - r)
+    qy = np.abs(yy + 0.5 - (y + h / 2)) - (h / 2 - r)
+    return (np.hypot(np.maximum(qx, 0), np.maximum(qy, 0))
+            + np.minimum(np.maximum(qx, qy), 0) - r)
 
 
-def _box_blur_py(grid, width, height, channels, radius):
-    """Uma passagem de desfoque de caixa, em Python puro."""
-    # horizontal
-    tmp = []
-    for y in range(height):
-        src = grid[y]
-        row = [0.0] * (width * channels)
-        for x in range(width):
-            base = x * channels
-            for c in range(channels):
-                total = 0.0
-                for dx in range(-radius, radius + 1):
-                    xx = x + dx
-                    if xx < 0:
-                        xx = 0
-                    elif xx >= width:
-                        xx = width - 1
-                    total += src[xx * channels + c]
-                row[base + c] = total / (2 * radius + 1)
-        tmp.append(row)
-    # vertical
-    out = []
-    for y in range(height):
-        row = [0.0] * (width * channels)
-        for x in range(width):
-            base = x * channels
-            for c in range(channels):
-                total = 0.0
-                for dy in range(-radius, radius + 1):
-                    yy = y + dy
-                    if yy < 0:
-                        yy = 0
-                    elif yy >= height:
-                        yy = height - 1
-                    total += tmp[yy][base + c]
-                row[base + c] = total / (2 * radius + 1)
-        out.append(row)
-    return out
+def _clip_region(panel: dict, width: int, height: int, pad: int = 0):
+    x0 = max(0, int(panel["x"]) - pad)
+    y0 = max(0, int(panel["y"]) - pad)
+    x1 = min(width, int(panel["x"] + panel["w"]) + pad)
+    y1 = min(height, int(panel["y"] + panel["h"]) + pad)
+    return x0, y0, x1, y1
 
 
-def decode_png_rgb(data: bytes) -> tuple[int, int, bytes]:
-    """Lê um PNG RGB (sem alfa) e devolve (largura, altura, bytes RGB)."""
-    if data[:8] != b"\x89PNG\r\n\x1a\n":
-        raise ValueError("não é um PNG")
-    pos = 8
-    width = height = 0
-    idat = bytearray()
-    while pos < len(data):
-        length = struct.unpack(">I", data[pos:pos + 4])[0]
-        tag = data[pos + 4:pos + 8]
-        payload = data[pos + 8:pos + 8 + length]
-        pos += 12 + length
-        if tag == b"IHDR":
-            width, height, depth, color = struct.unpack(">IIBB", payload[:10])
-            if depth != 8 or color != 2:
-                raise ValueError("o PNG precisa ser RGB de 8 bits")
-        elif tag == b"IDAT":
-            idat += payload
-        elif tag == b"IEND":
-            break
-    raw = zlib.decompress(bytes(idat))
-    stride = width * 3
-    out = bytearray(width * height * 3)
-    prev = bytearray(stride)
-    pos = 0
-    for y in range(height):
-        filt = raw[pos]
-        pos += 1
-        line = bytearray(raw[pos:pos + stride])
-        pos += stride
-        if filt == 1:
-            for i in range(3, stride):
-                line[i] = (line[i] + line[i - 3]) & 0xFF
-        elif filt == 2:
-            for i in range(stride):
-                line[i] = (line[i] + prev[i]) & 0xFF
-        elif filt == 3:
-            for i in range(stride):
-                left = line[i - 3] if i >= 3 else 0
-                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 0xFF
-        elif filt == 4:
-            for i in range(stride):
-                a = line[i - 3] if i >= 3 else 0
-                b = prev[i]
-                c = prev[i - 3] if i >= 3 else 0
-                p = a + b - c
-                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
-                pred = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
-                line[i] = (line[i] + pred) & 0xFF
-        out[y * stride:(y + 1) * stride] = line
-        prev = line
-    return width, height, bytes(out)
+def _shadow(canvas, panel: dict, theme: dict) -> None:
+    """Sombra suave sob o painel: é o que o descola do fundo."""
+    height, width = canvas.shape[:2]
+    strength = float(theme.get("glass_shadow", 0.20 if is_light(theme) else 0.42))
+    x, y, w, h = (int(panel[k]) for k in ("x", "y", "w", "h"))
+    r = min(int(panel.get("radius", 0)), w // 2, h // 2)
+    x0, y0, x1, y1 = _clip_region(panel, width, height, pad=44)
+    yy = np.arange(y0, y1, dtype=np.float32)[:, None]
+    xx = np.arange(x0, x1, dtype=np.float32)[None, :]
+    mask = np.clip(0.5 - _sdf(xx, yy, x, y + 10, w, h, r), 0.0, 1.0)[..., None]
+    mask = _blur_low(mask, 20, 3)
+    canvas[y0:y1, x0:x1] *= (1.0 - strength * mask)
 
 
-def glass_panel(
-    backdrop_png: bytes,
-    width: int,
-    height: int,
-    theme: dict,
-    panels: list[dict],
-) -> bytes:
-    """Compõe os painéis de vidro sobre o fundo.
+def _glass(canvas, panel: dict, theme: dict, flat) -> None:
+    height, width = canvas.shape[:2]
+    x, y, w, h = (int(panel[k]) for k in ("x", "y", "w", "h"))
+    if w <= 0 or h <= 0:
+        return
+    x0, y0, x1, y1 = _clip_region(panel, width, height)
+    if x1 <= x0 or y1 <= y0:
+        return
+    rh = y1 - y0
+    r = min(int(panel.get("radius", 0)), w // 2, h // 2)
+    rim = max(4, int(panel.get("rim", 16)))
+    region = canvas[y0:y1, x0:x1]
+    yy = np.arange(y0, y1, dtype=np.float32)[:, None]
+    xx = np.arange(x0, x1, dtype=np.float32)[None, :]
+    sdf = _sdf(xx, yy, x, y, w, h, r)
+    alpha = np.clip(0.5 - sdf, 0.0, 1.0)[..., None]
+    depth = np.maximum(0.0, -sdf)
 
-    Cada painel é um dicionário: x, y, w, h (em pixels), radius (opcional),
-    tint (opcional) e opacity (opcional). Devolve os bytes RGB finais.
-    """
-    _, _, raw = decode_png_rgb(backdrop_png)
-    if _np is not None:
-        return _glass_numpy(raw, width, height, theme, panels)
-    return bytes(_glass_python(raw, width, height, theme, panels))
+    # Vidro fosco: o que está atrás, desfocado, saturado e com um véu branco
+    # mais forte em cima (luz vindo de cima).
+    blur_r = max(2, int(theme.get("glass_blur", 26)) // 6)
+    frosted = _blur_low(region, blur_r * 4, 2)
+    sat = float(theme.get("glass_saturation", 1.28))
+    grey = frosted.mean(axis=2, keepdims=True)
+    frosted = np.clip(grey + (frosted - grey) * sat, 0, 255)
+    tint = float(theme.get("glass_tint", 0.085)) * 2.2
+    veil = tint * np.linspace(1.0, 0.5, rh, dtype=np.float32)[:, None, None]
+    veiled = frosted * (1.0 - veil) + 255.0 * veil
 
-def _saturate(arr, factor: float):
-    """Aumenta a saturação de um array RGB (float) mantendo o brilho.
+    # Do miolo (cor chapada) até a borda (vidro fosco), em `rim` pixels.
+    t = np.clip(depth / rim, 0.0, 1.0)
+    inner = (t * t * (3.0 - 2.0 * t))[..., None]
+    edge = float(theme.get("glass_edge", 0.60 if is_light(theme) else 0.78))
+    mixed = flat + (veiled - flat) * (edge * (1.0 - inner))
 
-    Em temas claros a saturação é reduzida: o véu branco já domina e
-    saturar mais transformaria o painel em cinza.
-    """
-    np = _np
+    # Linha especular: clara em cima, mais fraca embaixo, seguindo o contorno
+    # arredondado de verdade.
+    ring = np.clip(1.0 - np.abs(sdf + 0.5), 0.0, 1.0)
+    lit = np.linspace(1.0, 0.25, rh, dtype=np.float32)[:, None]
+    line = (ring * (0.22 + 0.45 * lit))[..., None]
+    mixed = mixed * (1.0 - line) + 255.0 * line
+
+    region[:] = mixed * alpha + region * (1.0 - alpha)
+
+
+def compose(width: int, height: int, theme: dict, panels: list[dict]):
+    """Devolve os bytes RGB da cena (fundo + sombras + vidro) ou None sem numpy."""
     if np is None:
-        return arr
-    grey = arr.mean(axis=2, keepdims=True)
-    return np.clip(grey + (arr - grey) * factor, 0, 255)
-
-
-def _inner_shadow(width: int, height: int, corner: int):
-    """Máscara 1 na borda, 0 no miolo: simula a sombra interna do vidro.
-
-    `dist` é a distância com sinal: negativa dentro do retângulo, zero na
-    borda. A sombra só aparece perto da borda (dist -> 0) e some no miolo
-    (dist muito negativo).
-    """
-    np = _np
-    if np is None:
-        return [[0.0] * width for _ in range(height)]
-    yy, xx = np.mgrid[0:height, 0:width].astype(np.float32)
-    qx = np.abs(xx - (width / 2)) - (width / 2 - corner)
-    qy = np.abs(yy - (height / 2)) - (height / 2 - corner)
-    dist = np.sqrt(np.maximum(qx, 0) ** 2 + np.maximum(qy, 0) ** 2) + np.minimum(np.maximum(qx, qy), 0)
-    depth = np.maximum(0.0, -dist)          # 0 na borda, cresce para dentro
-    falloff = np.clip(1.0 - depth / max(1.0, corner * 1.8), 0.0, 1.0)
-    return falloff
-
-
-def _glass_numpy(backdrop_rgb: bytes, width: int, height: int, theme: dict, panels: list[dict]) -> bytes:
-    np = _np
-    canvas = np.frombuffer(backdrop_rgb, dtype=np.uint8).reshape(height, width, 3).astype(np.float32)
-    tint_default = theme.get("glass_tint", 0.16)
-    blur_default = theme.get("glass_blur", 26)
-    yy_all, xx_all = np.mgrid[0:height, 0:width].astype(np.float32)
-
+        return None
+    width, height = max(1, int(width)), max(1, int(height))
+    canvas = _aurora(width, height, theme)
+    flat = np.asarray(glass_surface(theme), np.float32)
     for panel in panels:
-        x, y = int(panel["x"]), int(panel["y"])
-        w, h = int(panel["w"]), int(panel["h"])
-        if w <= 0 or h <= 0:
-            continue
-        x0, y0 = max(0, x), max(0, y)
-        x1, y1 = min(width, x + w), min(height, y + h)
-        if x1 <= x0 or y1 <= y0:
-            continue
-        rw, rh = x1 - x0, y1 - y0
-        region = canvas[y0:y1, x0:x1]
-        radius = int(panel.get("blur", blur_default))
-        tint = float(panel.get("tint", tint_default))
-        opacity = float(panel.get("opacity", 1.0))
-        corner = int(panel.get("radius", 0))
-
-        # Desfoque do que está atrás do vidro.
-        frosted = _blur_box(region.copy(), rw, rh, max(1, radius // 9))
-        # O vidro real preserva a saturação do que está atrás; devolve um pouco
-        # dela, senão o painel fica lavado e sem vida. Em tema claro o fundo já
-        # é quase branco, então o véu branco apenas clareia (e não acinzenta).
-        sat = float(panel.get("saturation", theme.get("glass_saturation", 1.28)))
-        frosted = _saturate(frosted, sat)
-        # Vidro: um véu de branco, mais forte em cima (luz vindo de cima).
-        ramp = np.linspace(1.0, 0.45, rh, dtype=np.float32)[:, None, None]
-        veil = tint * ramp
-        mixed = frosted * (1.0 - veil) + 255.0 * veil
-
-        # Sombra interna da "lente": escurece logo dentro da borda, como um
-        # vidro com espessura. É o que dá a sensação de profundidade.
-        if corner > 0:
-            inner = _inner_shadow(rw, rh, corner)[..., None]
-            strength = float(panel.get("inner_shadow", theme.get("glass_inner_shadow", 0.30)))
-            mixed = mixed * (1.0 - inner * strength)
-
-        # Cantos arredondados: fora da máscara, o fundo volta ao normal.
-        if corner > 0:
-            cy = yy_all[y0:y1, x0:x1]
-            cx = xx_all[y0:y1, x0:x1]
-            qx = np.abs(cx - (x + w / 2)) - (w / 2 - corner)
-            qy = np.abs(cy - (y + h / 2)) - (h / 2 - corner)
-            dist = np.sqrt(np.maximum(qx, 0) ** 2 + np.maximum(qy, 0) ** 2) + np.minimum(np.maximum(qx, qy), 0)
-            alpha = np.clip(corner + 0.5 - dist, 0.0, 1.0)[..., None]
-        else:
-            alpha = np.ones((rh, rw, 1), np.float32)
-
-        region[:] = mixed * alpha + region * (1.0 - alpha)
-
-        # Borda especular: luz em cima, sombra embaixo.
-        edge_light = np.array(lighten((int(region[0, 0, 0]), int(region[0, 0, 1]), int(region[0, 0, 2])), 0.42), np.float32)
-        edge_dark = np.array(darken((int(region[-1, 0, 0]), int(region[-1, 0, 1]), int(region[-1, 0, 2])), 0.30), np.float32)
-        region[0, :, :] = edge_light
-        region[-1, :, :] = edge_dark
-        region[:, 0, :] = edge_light * 0.92
-        region[:, -1, :] = edge_dark
-
+        _shadow(canvas, panel, theme)
+    for panel in panels:
+        _glass(canvas, panel, theme, flat)
     return np.clip(canvas, 0, 255).astype(np.uint8).tobytes()
-
-
-def _glass_python(backdrop_rgb: bytes, width: int, height: int, theme: dict, panels: list[dict]) -> bytearray:
-    canvas = bytearray(backdrop_rgb)
-    tint_default = theme.get("glass_tint", 0.16)
-    blur_default = theme.get("glass_blur", 26)
-
-    for panel in panels:
-        x, y = int(panel["x"]), int(panel["y"])
-        w, h = int(panel["w"]), int(panel["h"])
-        if w <= 0 or h <= 0:
-            continue
-        x0, y0 = max(0, x), max(0, y)
-        x1, y1 = min(width, x + w), min(height, y + h)
-        if x1 <= x0 or y1 <= y0:
-            continue
-        rw, rh = x1 - x0, y1 - y0
-        region = bytes(canvas[(y0 * width + x0) * 3:(y1 * width + x1) * 3])
-        radius = int(panel.get("blur", blur_default))
-        tint = float(panel.get("tint", tint_default))
-        opacity = float(panel.get("opacity", 1.0))
-
-        frosted = _blur_box(region, rw, rh, max(1, radius // 6))
-        for row in range(rh):
-            ramp = 1.0 - 0.45 * (row / max(1, rh - 1))
-            base = (y0 + row) * width
-            for col in range(rw):
-                pos = (row * rw + col) * 3
-                for c in range(3):
-                    value = frosted[pos + c] * (1.0 - tint * ramp) + 255.0 * (tint * ramp)
-                    value = value * opacity + canvas[(base + x0 + col) * 3 + c] * (1.0 - opacity)
-                    canvas[(base + x0 + col) * 3 + c] = max(0, min(255, int(value)))
-    return canvas
-
-
-def rounded_mask(width: int, height: int, radius: int) -> bytes:
-    """Máscara 1 = dentro do canto arredondado (usada pelo botão de vidro)."""
-    mask = bytearray(width * height)
-    for y in range(height):
-        for x in range(width):
-            inside = True
-            for cx, cy in ((radius, radius), (width - radius, radius),
-                            (radius, height - radius), (width - radius, height - radius)):
-                if (x < radius and cx == radius and y < radius and cy == radius) or \
-                   (x >= width - radius and cx == width - radius and y < radius and cy == radius) or \
-                   (x < radius and cx == radius and y >= height - radius and cy == height - radius) or \
-                   (x >= width - radius and cx == width - radius and y >= height - radius and cy == height - radius):
-                    dx = x - cx
-                    dy = y - cy
-                    if dx * dx + dy * dy > radius * radius:
-                        inside = False
-                        break
-            mask[y * width + x] = 1 if inside else 0
-    return bytes(mask)
-
-
-def sample_region(png: bytes, x: int, y: int, w: int, h: int) -> tuple[int, int, int]:
-    """Cor média de uma região do PNG — usada para casar a cor dos widgets
-    (que o Tk obriga a serem sólidos) com o vidro desenhado atrás."""
-    width, height, raw = decode_png_rgb(png)
-    total = [0, 0, 0]
-    count = 0
-    for yy in range(max(0, y), min(height, y + h)):
-        base = yy * width * 3
-        for xx in range(max(0, x), min(width, x + w)):
-            off = base + xx * 3
-            total[0] += raw[off]
-            total[1] += raw[off + 1]
-            total[2] += raw[off + 2]
-            count += 1
-    if not count:
-        return (0, 0, 0)
-    return (total[0] // count, total[1] // count, total[2] // count)
-
-
-def make_button_image(width: int, height: int, radius: int, top_color, bottom_color, border=None) -> bytes:
-    """PNG do botão de vidro (gradiente + borda). O Tk mostra como imagem."""
-    width, height = max(2, int(width)), max(2, int(height))
-    rows = []
-    for y in range(height):
-        t = y / max(1, height - 1)
-        row = bytearray()
-        base = mix(top_color, bottom_color, t)
-        for x in range(width):
-            row += bytes(base)
-            if border and (x < 1 or y < 1 or x >= width - 1 or y >= height - 1):
-                row[-3:] = bytes(border)
-        rows.append(bytes(row))
-    return encode_png(width, height, b"".join(rows))

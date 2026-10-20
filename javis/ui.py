@@ -57,7 +57,8 @@ from .storage import (
     save_state,
     stamp,
 )
-from .theme import DEFAULT_THEME, THEMES, darken, get_theme, hexc, lighten, mix
+from .theme import (DEFAULT_THEME, THEMES, darken, get_theme, glass_surface, glass_well, hexc, is_light,
+                    lighten, mix)
 
 log = logging.getLogger("javis")
 
@@ -125,6 +126,10 @@ class JavisApp:
         self.status_kind = "info"
         self._glass_panels: list[dict] = []
         self._backdrop_photo: tk.PhotoImage | None = None
+        self._scene_key = None      # evita redesenhar a mesma cena
+        self._colors_key = None     # evita reaplicar as mesmas cores
+        self._laid_size = None      # último tamanho de janela posicionado
+        self._layout_pending = False
         self._hover_anim: dict[str, float] = {}
         self._toast_id = None
         self._pulse_id = None
@@ -134,6 +139,7 @@ class JavisApp:
         self._init_window()
         self._init_fonts()
         self.style = ttk.Style(root)
+        self._glass_palette()
         self.auto_var = tk.BooleanVar(value=bool(self.state.get("auto_analysis_enabled", True)))
         self._setup_shortcuts()
         self._build_menu()
@@ -323,7 +329,9 @@ class JavisApp:
         if hasattr(self, "ai_label"):
             self.set_ai_status(*self.ai_status)
             self.set_status(self.status.cget("text"), self.status_kind)
-        self._render_backdrop()
+        # theme_use/style.configure acima redefiniram os estilos: reaplica o vidro.
+        self._colors_key = None
+        self._layout()
 
     def _style_text(self, widget: tk.Text) -> None:
         t = self.theme
@@ -428,60 +436,88 @@ class JavisApp:
 
     # ----- fundo de vidro ------------------------------------------------------
 
+    def _glass_palette(self) -> None:
+        """Cores do vidro: dependem só do tema, então são iguais em todo widget."""
+        t = self.theme
+        self.glass_color = glass_surface(t)
+        self.well_color = glass_well(t)
+        self.glass_surface = hexc(self.glass_color)
+        self.glass_well = hexc(self.well_color)
+        self.glass_line = hexc(darken(self.glass_color, 0.25 if is_light(t) else 0.55))
+
     def _render_backdrop(self) -> None:
-        """Desenha o fundo aurora com os cartões de vidro."""
+        """Desenha o fundo aurora com os painéis de vidro (só se algo mudou)."""
         if not hasattr(self, "backdrop"):
             return
+        self._apply_glass_colors()
         width = max(320, self.backdrop.winfo_width())
         height = max(240, self.backdrop.winfo_height())
-        if width <= 1 or height <= 1:
+        key = (self.theme_name, width, height,
+               tuple(tuple(sorted(p.items())) for p in self._glass_panels))
+        if key == self._scene_key:
             return
         try:
-            base = glass.render_backdrop(width, height, self.theme)
-            composed = glass.glass_panel(base, width, height, self.theme, self._glass_panels)
-            png = glass.encode_png(width, height, composed)
-            self._backdrop_photo = tk.PhotoImage(data=png)
+            rgb = glass.compose(width, height, self.theme, self._glass_panels)
             self.backdrop.delete("all")
-            self.backdrop.create_image(0, 0, image=self._backdrop_photo, anchor="nw")
-            self._apply_glass_colors(png)
+            if rgb is None:
+                self._draw_plain_backdrop()
+            else:
+                try:
+                    photo = tk.PhotoImage(master=self.root, data=glass.to_ppm(width, height, rgb), format="PPM")
+                except tk.TclError:
+                    photo = tk.PhotoImage(master=self.root, data=glass.encode_png(width, height, rgb))
+                self._backdrop_photo = photo
+                self.backdrop.create_image(0, 0, image=photo, anchor="nw")
+            self._scene_key = key
         except Exception:  # noqa: BLE001 - o vidro é enfeite; nunca deve derrubar o app
             log.exception("Falha ao desenhar o fundo")
 
-    def _apply_glass_colors(self, png: bytes) -> None:
-        """Casa a cor dos widgets com o vidro desenhado atrás.
+    def _draw_plain_backdrop(self) -> None:
+        """Sem numpy: fundo liso e cartões chapados (nada pesado, nada trava)."""
+        if not getattr(self, "_warned_numpy", False):
+            self._warned_numpy = True
+            log.warning("numpy não encontrado: usando visual simples (py -m pip install numpy ativa o vidro).")
+        self.backdrop.configure(bg=hexc(self.theme["bg"]))
+        edge = hexc(lighten(self.glass_color, 0.25))
+        for p in self._glass_panels:
+            self.backdrop.create_rectangle(p["x"], p["y"], p["x"] + p["w"], p["y"] + p["h"],
+                                           fill=self.glass_surface, outline=edge)
 
-        O Tk não deixa widgetsarem transparentes, então a saída é: o canvas
-        mostra a aurora e os cartões de vidro; os widgets por cima recebem a
-        cor média exata da região onde estão — o resultado é uma superfície
-        contínua, sem emenda visível entre o vidro e o conteúdo.
-        """
-        t = self.theme
-        try:
-            if self._glass_panels:
-                panel = self._glass_panels[0]
-                color = glass.sample_region(png, panel["x"] + 4, panel["y"] + 4,
-                                            max(1, panel["w"] - 8), max(1, panel["h"] - 8))
-            else:
-                color = t["surface"]
-        except Exception:  # noqa: BLE001
-            log.exception("Falha ao amostrar o vidro")
+    def _apply_glass_colors(self) -> None:
+        """Aplica a cor do vidro aos frames, estilos ttk e à barra lateral."""
+        key = (self.theme_name, self.base_size)
+        if key == self._colors_key:
             return
-        self.glass_color = color
-        # Os campos (caixas de texto, listas) ficam um pouco mais escuros que o
-        # vidro, como um "poco" — é o que dá a leitura de profundidade.
-        well = darken(color, 0.22)
-        self.well_color = well
-        self.glass_surface = hexc(color)
-        self.glass_well = hexc(well)
-        self.glass_line = hexc(darken(color, 0.55))
-        # Frames que seguram o conteúdo acompanham o vidro.
-        for frame in getattr(self, "glass_frames", []):
+        self._colors_key = key
+        self._glass_palette()
+        for frame in [*getattr(self, "glass_frames", []), getattr(self, "page_host", None)]:
             try:
-                if frame.winfo_exists():
+                if frame is not None and frame.winfo_exists():
                     frame.configure(bg=self.glass_surface)
             except tk.TclError:
                 pass
         self.apply_widget_colors()
+        self._recolor_sidebar()
+
+    def _recolor_sidebar(self) -> None:
+        """A barra lateral também segue o tema (antes ficava com as cores antigas)."""
+        if not hasattr(self, "sidebar"):
+            return
+        t = self.theme
+
+        def walk(widget) -> None:
+            try:
+                widget.configure(bg=self.glass_surface)
+            except tk.TclError:
+                pass
+            for child in widget.winfo_children():
+                walk(child)
+
+        walk(self.sidebar)
+        for widget, color in ((self.sidebar_title, t["text"]), (self.sidebar_sub, t["muted"]),
+                              (self.theme_btn, t["muted"])):
+            widget.configure(fg=hexc(color))
+        self._highlight_nav(self.current_page)
 
     def apply_widget_colors(self) -> None:
         """Aplica as cores do vidro aos campos de entrada e listas."""
@@ -522,6 +558,32 @@ class JavisApp:
             self.style.configure("Banner.TFrame", background=self.glass_well)
             self.style.configure("Banner.TLabel", background=self.glass_well, foreground=hexc(self.theme["text"]))
             self.style.configure("TPanedwindow", background=self.glass_surface)
+            # Botões de vidro: um tom acima da placa (abaixo, no tema claro), com contorno fino.
+            light = is_light(self.theme)
+            shade = darken if light else lighten
+            btn = hexc(shade(self.glass_color, 0.05 if light else 0.07))
+            edge = hexc(shade(self.glass_color, 0.14 if light else 0.16))
+            hot = hexc(shade(self.glass_color, 0.10 if light else 0.15))
+            press = hexc(darken(self.glass_color, 0.18 if light else 0.12))
+            for name in ("TButton", "Ghost.TButton"):
+                self.style.configure(name, background=btn, bordercolor=edge, lightcolor=btn, darkcolor=btn)
+                self.style.map(name, background=[("pressed", press), ("active", hot)])
+            self.style.configure("TMenubutton", background=btn, bordercolor=edge)
+            accent = self.theme["accent"]
+            self.style.map("Action.TButton",
+                           background=[("disabled", hexc(mix(self.glass_color, accent, 0.35))),
+                                       ("pressed", hexc(darken(accent, 0.18))),
+                                       ("active", hexc(lighten(accent, 0.10)))])
+            self.style.map("TCombobox",
+                           fieldbackground=[("readonly", self.glass_well), ("disabled", self.glass_well)],
+                           foreground=[("readonly", hexc(self.theme["text"])), ("disabled", hexc(self.theme["muted"]))])
+            bar = hexc(darken(self.glass_color, 0.10 if light else 0.35))
+            self.style.configure("Status.TFrame", background=bar)
+            self.style.configure("Status.TLabel", background=bar)
+            # Divisória arrastável: sem o "pino" escuro padrão do tema clam.
+            self.style.configure("Sash", sashthickness=self.px(8), gripcount=0, background=self.glass_surface,
+                                 lightcolor=self.glass_surface, darkcolor=self.glass_surface,
+                                 bordercolor=self.glass_surface)
             self.style.configure("TScrollbar", background=self.glass_surface, troughcolor=self.glass_surface,
                                  bordercolor=self.glass_surface, lightcolor=self.glass_surface,
                                  darkcolor=self.glass_surface)
@@ -725,7 +787,7 @@ class JavisApp:
         # As páginas ficam por cima do cartão de vidro, exatamente sobre ele.
         # Usam grid dentro de um contentor: o Tk trata a geometria com mais
         # confiança do que com place() encadeado.
-        self.page_host = tk.Frame(root, bg=hexc(self.theme["bg"]))
+        self.page_host = tk.Frame(root, bg=self.glass_surface)
         self.page_host.place(x=0, y=0, width=10, height=10)
         self.page_host.grid_rowconfigure(0, weight=1)
         self.page_host.grid_columnconfigure(0, weight=1)
@@ -733,7 +795,7 @@ class JavisApp:
 
         self.glass_frames: list[tk.Widget] = []
         for key, _label in NAV_ITEMS:
-            page = tk.Frame(self.page_host, bg=hexc(self.theme["bg"]))
+            page = tk.Frame(self.page_host, bg=self.glass_surface)
             page.grid(row=0, column=0, sticky="nsew")
             self.pages[key] = page
             self.glass_frames.append(page)
@@ -753,48 +815,56 @@ class JavisApp:
         root.bind("<Configure>", self._on_root_configure)
         self.root.after(200, self._layout)
 
-    def _on_root_configure(self, _event=None) -> None:
+    def _on_root_configure(self, event=None) -> None:
         """Redesenha o vidro quando a janela muda de tamanho.
 
-        Usa um temporizador para não entrar em laço: reposicionar as páginas
-        dispara <Configure> de novo.
+        O <Configure> da janela chega também de TODOS os widgets filhos; sem
+        este filtro, cada reposicionamento disparava um novo redesenho em
+        cascata (6 renders só para abrir o app).
         """
-        if getattr(self, "_layout_pending", False):
+        if event is not None and event.widget is not self.root:
+            return
+        if (self.root.winfo_width(), self.root.winfo_height()) == self._laid_size:
+            return
+        if self._layout_pending:
             return
         self._layout_pending = True
-        self.root.after(90, self._run_layout)
+        self.root.after(140, self._run_layout)
 
     def _run_layout(self) -> None:
         self._layout_pending = False
         self._layout()
 
     def _layout(self) -> None:
-        """Posiciona a barra lateral, as páginas e a barra de status.
+        """Posiciona os painéis de vidro e o conteúdo exatamente sobre eles.
 
-        O cartão de vidro é desenhado no canvas exatamente sob a área das
-        páginas, e as páginas recebem a cor média dessa região — o resultado
-        é uma superfície contínua, sem emenda entre o vidro e o conteúdo.
+        O miolo de cada painel é a cor chapada do vidro; o conteúdo começa
+        depois da borda (`rim`), onde o vidro já convergiu para essa cor.
         """
         if not hasattr(self, "backdrop"):
             return
         width = max(320, self.backdrop.winfo_width())
         height = max(240, self.backdrop.winfo_height())
+        self._laid_size = (self.root.winfo_width(), self.root.winfo_height())
         margin = self.px(14)
         status_h = self.px(34)
         radius = int(self.theme.get("card_radius", 20))
+        rim_side, rim_card = self.px(12), self.px(18)
 
+        panel_h = max(40, height - margin * 2 - status_h)
+        side_w = SIDEBAR_W - margin
         card_x = SIDEBAR_W + margin
-        card_y = margin
-        card_w = max(40, width - SIDEBAR_W - margin * 2)
-        card_h = max(40, height - margin * 2 - status_h)
-        self._glass_panels = [{"x": card_x, "y": card_y, "w": card_w, "h": card_h, "radius": radius}]
+        card_w = max(40, width - card_x - margin)
+        self._glass_panels = [
+            {"x": margin, "y": margin, "w": side_w, "h": panel_h, "radius": radius, "rim": rim_side},
+            {"x": card_x, "y": margin, "w": card_w, "h": panel_h, "radius": radius, "rim": rim_card},
+        ]
 
         if hasattr(self, "sidebar"):
-            self.sidebar.place(x=0, y=0, width=SIDEBAR_W, height=height)
-        # O conteúdo fica dentro do cartão, com folga para o vidro aparecer.
-        pad = self.px(16)
-        page_geo = (card_x + pad, card_y + pad,
-                    max(10, card_w - pad * 2), max(10, card_h - pad * 2))
+            self.sidebar.place(x=margin + rim_side, y=margin + rim_side,
+                               width=max(10, side_w - rim_side * 2), height=max(10, panel_h - rim_side * 2))
+        page_geo = (card_x + rim_card, margin + rim_card,
+                    max(10, card_w - rim_card * 2), max(10, panel_h - rim_card * 2))
         self._page_geometry = page_geo
         self.page_host.place(x=page_geo[0], y=page_geo[1], width=page_geo[2], height=page_geo[3])
         if hasattr(self, "status_bar"):
@@ -803,65 +873,62 @@ class JavisApp:
         # O Tk só aplica a nova geometria no próximo ciclo; sem isto os
         # widgets ficam com 1x1 até a próxima interação do usuário.
         self.root.update_idletasks()
-
         self._render_backdrop()
 
     def _build_sidebar(self, parent) -> None:
         t = self.theme
-        side = tk.Frame(parent, bg=hexc(darken(t["bg"], 0.28)), width=SIDEBAR_W)
-        side.grid(row=0, column=0, sticky="nsw")
-        side.grid_propagate(False)
+        bgc = self.glass_surface
+        side = tk.Frame(parent, bg=bgc)
         side.pack_propagate(False)
         self.sidebar = side
 
-        title = tk.Label(side, text="JAVIS", bg=hexc(darken(t["bg"], 0.28)), fg=hexc(t["text"]),
+        title = tk.Label(side, text="JAVIS", bg=bgc, fg=hexc(t["text"]),
                          font=(self.family, self.base_size + 7, "bold"))
-        title.pack(anchor="w", padx=(22, 0), pady=(24, 0))
-        sub = tk.Label(side, text="Plano Bismarck", bg=hexc(darken(t["bg"], 0.28)), fg=hexc(t["muted"]),
-                       font=self.f_small)
-        sub.pack(anchor="w", padx=(24, 0), pady=(2, 0))
-        self._sidebar_bg = hexc(darken(t["bg"], 0.28))
-        self.sidebar_labels = [title, sub]
+        title.pack(anchor="w", padx=(10, 0), pady=(14, 0))
+        sub = tk.Label(side, text="Plano Bismarck", bg=bgc, fg=hexc(t["muted"]), font=self.f_small)
+        sub.pack(anchor="w", padx=(12, 0), pady=(2, 0))
+        self.sidebar_title, self.sidebar_sub = title, sub
 
-        nav_frame = tk.Frame(side, bg=hexc(darken(t["bg"], 0.28)))
-        nav_frame.pack(fill="x", pady=(26, 0))
+        nav_frame = tk.Frame(side, bg=bgc)
+        nav_frame.pack(fill="x", pady=(22, 0))
         self.nav_canvas = nav_frame
 
         self.nav_buttons: list[tk.Frame] = []
         for key, label in NAV_ITEMS:
-            holder = tk.Frame(nav_frame, bg=hexc(darken(t["bg"], 0.28)), height=42, cursor="hand2")
-            holder.pack(fill="x", padx=14, pady=2)
+            holder = tk.Frame(nav_frame, bg=bgc, height=42, cursor="hand2")
+            holder.pack(fill="x", padx=2, pady=2)
             holder.pack_propagate(False)
-            lbl = tk.Label(holder, text=label, bg=hexc(darken(t["bg"], 0.28)), fg=hexc(t["muted"]),
-                           font=self.f_base, anchor="w", padx=16)
+            lbl = tk.Label(holder, text=label, bg=bgc, fg=hexc(t["muted"]), font=self.f_base, anchor="w", padx=14)
             lbl.pack(fill="x", pady=9)
             for widget in (holder, lbl):
                 widget.bind("<Button-1>", lambda _e, k=key: self.show_page(k))
-                widget.bind("<Enter>", lambda _e, h=holder, l=lbl: self._nav_hover(h, l, True))
-                widget.bind("<Leave>", lambda _e, h=holder, l=lbl: self._nav_hover(h, l, False))
+                widget.bind("<Enter>", lambda _e, k=key: self._nav_hover(k, True))
+                widget.bind("<Leave>", lambda _e, k=key: self._nav_hover(k, False))
             self.nav[key] = holder
             self.nav_labels[key] = lbl
             self.nav_buttons.append(holder)
 
-        spacer = tk.Frame(side, bg=hexc(darken(t["bg"], 0.28)))
+        spacer = tk.Frame(side, bg=bgc)
         spacer.pack(fill="both", expand=True)
 
-        self.ai_label = tk.Label(side, text="", bg=hexc(darken(t["bg"], 0.28)), fg=hexc(t["muted"]),
-                                 font=self.f_small, justify="left", anchor="w", wraplength=180)
-        self.ai_label.pack(fill="x", padx=22, pady=(0, 10))
+        self.ai_label = tk.Label(side, text="", bg=bgc, fg=hexc(t["muted"]), font=self.f_small,
+                                 justify="left", anchor="w", wraplength=self.px(160))
+        self.ai_label.pack(fill="x", padx=10, pady=(0, 10))
 
-        theme_btn = tk.Label(side, text="◐  Alternar tema", bg=hexc(darken(t["bg"], 0.28)),
-                             fg=hexc(t["muted"]), font=self.f_small, cursor="hand2")
-        theme_btn.pack(anchor="w", padx=22, pady=(0, 18))
+        theme_btn = tk.Label(side, text="◐  Alternar tema", bg=bgc, fg=hexc(t["muted"]),
+                             font=self.f_small, cursor="hand2")
+        theme_btn.pack(anchor="w", padx=10, pady=(0, 8))
         theme_btn.bind("<Button-1>", lambda _e: self.toggle_theme())
-        self.sidebar_labels.append(theme_btn)
+        self.theme_btn = theme_btn
 
-    def _nav_hover(self, holder: tk.Frame, label: tk.Label, entering: bool) -> None:
-        """Realce suave ao passar o mouse (interatividade)."""
+    def _nav_hover(self, key: str, entering: bool) -> None:
+        """Realce suave ao passar o mouse; o item ativo mantém o destaque."""
+        if key == self.current_page:
+            return
         t = self.theme
-        bg = hexc(lighten(darken(t["bg"], 0.28), 0.12)) if entering else hexc(darken(t["bg"], 0.28))
-        holder.configure(bg=bg)
-        label.configure(bg=bg, fg=hexc(t["text"]) if entering else hexc(t["muted"]))
+        bg = hexc(lighten(self.glass_color, 0.10)) if entering else self.glass_surface
+        self.nav[key].configure(bg=bg)
+        self.nav_labels[key].configure(bg=bg, fg=hexc(t["text"]) if entering else hexc(t["muted"]))
 
     def _build_capture(self, tab) -> None:
         pane = ttk.PanedWindow(tab, orient="vertical")
@@ -1110,7 +1177,7 @@ class JavisApp:
         t = self.theme
         for name, holder in self.nav.items():
             active = name == key
-            bg = hexc(t["accent"]) if active else hexc(darken(t["bg"], 0.28))
+            bg = hexc(t["accent"]) if active else self.glass_surface
             fg = hexc(t["accent_fg"]) if active else hexc(t["muted"])
             holder.configure(bg=bg)
             try:
@@ -2226,7 +2293,7 @@ class FormDialog(tk.Toplevel):
         self.inputs: dict[str, tuple[str, object]] = {}
         self.title(title)
         self.transient(app.root)
-        self.configure(background=hexc(app.theme["bg"]))
+        self.configure(background=getattr(app, "glass_surface", hexc(app.theme["bg"])))
         frame = ttk.Frame(self, padding=16)
         frame.pack(fill="both", expand=True)
         if intro:

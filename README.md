@@ -53,9 +53,9 @@ O visual é em **vidro**: um cartão translúcido sobre um fundo aurora animado,
 
 ### Como o vidro é feito
 
-O Tk não compõe o canal alfa de uma imagem (verificado em captura de tela real: um PNG semitransparente vira opaco). Por isso o Javis **pré-compõe** o vidro em Python: desenha o fundo aurora, tira uma cópia desfocada dele para dentro de cada painel e mistura o branco do vidro por cima. O resultado é o mesmo efeito do acrylic do Windows, sem depender de API do sistema. A cor dos widgets é amostrada da região correspondente, então não há emenda entre o vidro e o conteúdo.
+O Tk não deixa widgets transparentes. Por isso o Javis **pré-compõe** o vidro numa imagem de fundo: aurora, sombra suave, borda fosca com brilho e linha especular. O miolo de cada painel é uma cor chapada que depende só do tema, e a borda converge para ela; os widgets usam exatamente essa cor, então não há emenda. O efeito é um "vidro fosco" simulado, não um desfoque em tempo real do que está atrás da janela.
 
-O cálculo é vetorizado quando o `numpy` está instalado e cai para uma versão pura em Python quando não está. O `numpy` é **opcional**: o aplicativo funciona igual sem ele.
+O efeito usa o `numpy` (`py -m pip install numpy`). Sem ele o Javis abre normalmente, mas com fundo liso e cartões chapados. A imagem só é recalculada quando o tamanho da janela ou o tema muda.
 
 ## Arquivos
 
