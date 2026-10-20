@@ -36,7 +36,7 @@ ATALHOS E RECURSOS DA INTERFACE
 - Barra de menus: Arquivo, Editar, Exibir, IA e Ajuda (Ajuda > Atalhos de teclado mostra a lista completa).
 - Ctrl+Enter guarda o registro; Ctrl+R analisa rápido; Ctrl+Shift+R faz a análise aprofundada; Esc para a análise em andamento.
 - Ctrl+1 a Ctrl+6 trocam de seção; Ctrl+F pesquisa registros; Ctrl+S salva o plano; F5 reconecta ao Ollama.
-- Ctrl+T alterna entre tema claro e escuro; Ctrl++ e Ctrl+- mudam o tamanho da fonte (Ctrl+0 volta ao padrão).
+- Ctrl+T alterna o tema (Aurora, Meia-noite, Aurora clara); Ctrl++ e Ctrl+- mudam o tamanho da fonte (Ctrl+0 volta ao padrão).
 - Clique no cabeçalho de uma coluna para ordenar; botão direito numa lista abre o menu de ações.
 - Na análise, clicar em um ID (N-001, A-002, D-003) abre o item correspondente.
 - Datas aceitam AAAA-MM-DD, DD/MM/AAAA, hoje, amanhã ou +7 (dias).
@@ -44,6 +44,16 @@ ATALHOS E RECURSOS DA INTERFACE
 - Histórico: selecione uma análise para reler a resposta completa e reabri-la na tela inicial.
 - Plano: aviso de alterações não salvas, "Recarregar do disco" e "Versões anteriores…" para restaurar uma cópia.
 - Um rascunho do que você está escrevendo é guardado automaticamente e restaurado na próxima abertura.
+- Ao salvar um registro, um plano, uma exportação ou um backup, aparece uma notificação flutuante.
+
+O VISUAL EM VIDRO
+- A janela tem um cartão translúcido sobre um fundo aurora, com cantos arredondados e borda especular.
+- O fundo é desenhado pelo próprio Javis: o Tk não sabe deixar widgets transparentes, então o vidro é montado antes e a cor dos campos é casada com a dele. O resultado é contínuo, sem emenda.
+- Se quiser o visual mais rápido, o Javis usa o numpy quando ele está instalado; sem numpy, o resultado é o mesmo, só o cálculo leva alguns décimos de segundo a mais.
+
+ARQUIVO PARA ABRIR PDF (OPCIONAL)
+- TXT, MD, CSV, JSON e DOCX já abrem sem instalar nada.
+- Para PDF, instale uma vez no PowerShell: py -m pip install pypdf
 
 ARQUIVOS LOCAIS
 - Dados e plano: %LOCALAPPDATA%\JavisBismarck
@@ -52,7 +62,8 @@ ARQUIVOS LOCAIS
 - Registro de erros: %LOCALAPPDATA%\JavisBismarck\javis.log (Ajuda > Abrir arquivo de log).
 - Arquivo > Fazer backup dos dados (.zip) e Arquivo > Exportar tudo em Markdown geram cópias fora da pasta de dados; elas contêm seus dados privados.
 - Aplicativo e inicializadores: pasta onde este guia está salvo.
-- O notebook antigo permanece como alternativa; a interface Javis.pyw é o modo normal de uso.
+- O código está na subpasta javis/ (config, storage, llm, theme, glass, ui). O Javis.pyw é só a porta de entrada.
+- O notebook permanece como alternativa; ele só lê os dados, sem gravar nada. A interface Javis.pyw é o modo normal de uso.
 
 RESPOSTAS MAIS RÁPIDAS
 O Javis usa o modelo pequeno instalado para triagens rápidas e mantém o modelo escolhido na lista para análises aprofundadas.
