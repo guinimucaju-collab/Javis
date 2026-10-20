@@ -13,8 +13,8 @@ PRIVACIDADE
 
 ABRIR
 - Use o atalho “Javis — Plano Bismarck” na Área de Trabalho.
-- Se ainda não houver atalho, execute Criar_Atalho_Javis.ps1 uma vez. O inicializador abre a janela sem console.
-- Se a janela avisar que o Ollama está desconectado, abra o aplicativo Ollama.
+- Se ainda não houver atalho, execute Criar_Atalho_Javis.ps1 uma vez. O inicializador abre a janela sem console e encontra o Python instalado (Python Launcher pyw.exe ou pythonw.exe). Para usar outro Python, defina a variável de ambiente JAVIS_PYTHONW com o caminho do pythonw.exe.
+- Se a janela avisar que o Ollama está desconectado, abra o aplicativo Ollama. O Javis tenta reconectar sozinho a cada 20 segundos.
 
 PREPARAR A IA LOCAL UMA VEZ
 1. Instale o Ollama para Windows: https://ollama.com/download/windows
@@ -32,9 +32,25 @@ USO DO DIA A DIA
 5. Leia a análise. Use “Aprovar atualização do plano” somente depois de revisar a proposta.
 6. Em “Ações e resultados”, registre a ação e o resultado esperado. Em “Decisões”, registre apenas decisões confirmadas. Em “Registros”, pesquise, abra e analise novamente textos salvos.
 
+ATALHOS E RECURSOS DA INTERFACE
+- Barra de menus: Arquivo, Editar, Exibir, IA e Ajuda (Ajuda > Atalhos de teclado mostra a lista completa).
+- Ctrl+Enter guarda o registro; Ctrl+R analisa rápido; Ctrl+Shift+R faz a análise aprofundada; Esc para a análise em andamento.
+- Ctrl+1 a Ctrl+6 trocam de seção; Ctrl+F pesquisa registros; Ctrl+S salva o plano; F5 reconecta ao Ollama.
+- Ctrl+T alterna entre tema claro e escuro; Ctrl++ e Ctrl+- mudam o tamanho da fonte (Ctrl+0 volta ao padrão).
+- Clique no cabeçalho de uma coluna para ordenar; botão direito numa lista abre o menu de ações.
+- Na análise, clicar em um ID (N-001, A-002, D-003) abre o item correspondente.
+- Datas aceitam AAAA-MM-DD, DD/MM/AAAA, hoje, amanhã ou +7 (dias).
+- A seção Ações mostra em vermelho o que passou da data de revisão, com contador no menu lateral.
+- Histórico: selecione uma análise para reler a resposta completa e reabri-la na tela inicial.
+- Plano: aviso de alterações não salvas, "Recarregar do disco" e "Versões anteriores…" para restaurar uma cópia.
+- Um rascunho do que você está escrevendo é guardado automaticamente e restaurado na próxima abertura.
+
 ARQUIVOS LOCAIS
 - Dados e plano: %LOCALAPPDATA%\JavisBismarck
-- Cópias anteriores do plano: %LOCALAPPDATA%\JavisBismarck\versoes_plano
+- Cópias anteriores do plano: %LOCALAPPDATA%\JavisBismarck\versoes_plano (as 200 mais recentes)
+- Backup diário automático dos dados: %LOCALAPPDATA%\JavisBismarck\backups_estado (os 7 mais recentes). Se o arquivo de dados ficar ilegível, o Javis guarda uma cópia dele e recupera o backup mais recente.
+- Registro de erros: %LOCALAPPDATA%\JavisBismarck\javis.log (Ajuda > Abrir arquivo de log).
+- Arquivo > Fazer backup dos dados (.zip) e Arquivo > Exportar tudo em Markdown geram cópias fora da pasta de dados; elas contêm seus dados privados.
 - Aplicativo e inicializadores: pasta onde este guia está salvo.
 - O notebook antigo permanece como alternativa; a interface Javis.pyw é o modo normal de uso.
 

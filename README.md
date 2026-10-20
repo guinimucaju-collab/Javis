@@ -23,7 +23,7 @@ Para baixar o modelo recomendado uma vez, abra o PowerShell e execute:
 ollama pull qwen3:1.7b
 ```
 
-Depois, abra o Ollama e inicie o Javis pelo atalho da Área de Trabalho. Se ainda não houver atalho, execute `Criar_Atalho_Javis.ps1` uma vez. Também é possível iniciar com `Iniciar_Javis.ps1`.
+Depois, abra o Ollama e inicie o Javis pelo atalho da Área de Trabalho. Se ainda não houver atalho, execute `Criar_Atalho_Javis.ps1` uma vez. Também é possível iniciar com `Iniciar_Javis.ps1`. Os scripts procuram o Python automaticamente (`pyw.exe` ou `pythonw.exe`); para usar outro, defina `JAVIS_PYTHONW`.
 
 ## Uso
 
@@ -35,10 +35,20 @@ Depois, abra o Ollama e inicie o Javis pelo atalho da Área de Trabalho. Se aind
 
 O Javis não observa acontecimentos fora do aplicativo nem conclui sozinho que uma ação causou um resultado.
 
+## Interface
+
+- Navegação lateral, menus (Arquivo, Editar, Exibir, IA, Ajuda) e atalhos de teclado (Ajuda › Atalhos de teclado).
+- Tema claro/escuro (`Ctrl+T`), tamanho de fonte ajustável (`Ctrl++`, `Ctrl+-`, `Ctrl+0`) e suporte a telas de alta resolução.
+- Listas ordenáveis, com filtros, menu de botão direito e destaque de ações com revisão vencida.
+- Análises com títulos destacados e IDs clicáveis; botão **Parar** (`Esc`) para interromper a resposta.
+- Histórico com as respostas completas das análises, restauração de versões do plano e rascunho automático.
+- Formulários com datas flexíveis (`AAAA-MM-DD`, `DD/MM/AAAA`, `hoje`, `amanhã`, `+7`).
+- Backup diário automático, recuperação de dados corrompidos, backup `.zip` e exportação em Markdown.
+
 ## Arquivos
 
 - `Javis.pyw`: interface principal.
 - `Iniciar_Javis.ps1`: abre o aplicativo sem janela de console.
 - `Criar_Atalho_Javis.ps1`: cria o atalho na Área de Trabalho.
 - `Javis_Plano_Bismarck.ipynb`: alternativa em formato de notebook.
-- `%LOCALAPPDATA%\JavisBismarck`: dados privados, plano e versões anteriores.
+- `%LOCALAPPDATA%\JavisBismarck`: dados privados, plano, versões anteriores (`versoes_plano`), backups diários (`backups_estado`) e `javis.log`.

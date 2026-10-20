@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Segredos e configurações locais
+.env
+.env.*
+!.env.example
+
+# Logs e arquivos temporários
+*.log
+*.tmp
+
+# Dados privados do Javis (normalmente ficam em %LOCALAPPDATA%\JavisBismarck)
+estado_plano_bismarck.json
+Plano_Bismarck.md
+versoes_plano/
+
+# Bancos locais, caso sejam adicionados no futuro
+*.db
+*.sqlite
+*.sqlite3
+backups_estado/
+estado_corrompido_*.json
+javis.log*
