@@ -1,10 +1,10 @@
-# Javis — Plano Bismarck
+# Javis
 
-O Javis é um assistente local com interface para servir como segundo cérebro operacional do Plano Bismarck. Ele recebe notas, perguntas, relatos e relatórios; analisa o contexto; sugere próximos passos; ajuda a revisar decisões; e acompanha resultados de ações registradas.
+O Javis é um assistente local com interface para servir como segundo cérebro operacional. Ele recebe notas, perguntas, relatos e relatórios; analisa o contexto; sugere próximos passos; ajuda a revisar decisões; e acompanha resultados de ações registradas.
 
 ## Privacidade
 
-- O histórico, as decisões, as ações e o plano ficam no computador, em `%LOCALAPPDATA%\JavisBismarck`.
+- O histórico, as decisões, as ações e o plano ficam no computador, em `%LOCALAPPDATA%\Javis`.
 - As análises usam o Ollama local (`127.0.0.1`); o conteúdo não é enviado a um serviço de IA na internet pelo Javis. A variável `JAVIS_OLLAMA_URL` só é aceita se apontar para `127.0.0.1`, `localhost` ou `::1`.
 - O Javis só pode acompanhar informações que você registra ou importa. Ele procura relações possíveis entre relatos e ações anteriores, mesmo quando o relato não cita diretamente a ação.
 - Uma relação encontrada é uma hipótese, não prova de causa. O Javis pede confirmação antes de vincular relatos ou aprovar mudanças no plano.
@@ -69,5 +69,5 @@ O efeito usa o `numpy` (`py -m pip install numpy`). Sem ele o Javis abre normalm
   - `ui.py` — a interface.
 - `Iniciar_Javis.ps1`: abre o aplicativo sem janela de console.
 - `Criar_Atalho_Javis.ps1`: cria o atalho na Área de Trabalho.
-- `Javis_Plano_Bismarck.ipynb`: alternativa em formato de notebook (somente leitura; não grava nada).
-- `%LOCALAPPDATA%\JavisBismarck`: dados privados, plano, versões anteriores (`versoes_plano`), backups diários (`backups_estado`) e `javis.log`.
+- `Javis.ipynb`: alternativa em formato de notebook (somente leitura; não grava nada).
+- `%LOCALAPPDATA%\Javis`: dados privados, plano, versões anteriores (`versoes_plano`), backups diários (`backups_estado`) e `javis.log`.

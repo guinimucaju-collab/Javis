@@ -12,6 +12,7 @@ from .config import (
     ANALYSIS_LIMIT,
     DATA_DIR,
     HISTORY_LIMIT,
+    LEGACY_DATA_DIR,
     PLAN_BACKUP_LIMIT,
     PLAN_FILE,
     STATE_BACKUP_DIR,
@@ -121,7 +122,7 @@ def add_history(state: dict, text: str) -> None:
 
 def initial_state() -> dict:
     return {
-        "projeto": "Plano Bismarck",
+        "projeto": "Javis",
         "visao": "Javis como segundo cérebro operacional: registra contexto, analisa, sugere próximos passos e atualiza decisões confirmadas pela pessoa.",
         "objetivo": "",
         "notas": [],
@@ -137,7 +138,7 @@ def initial_state() -> dict:
 
 
 def make_initial_plan(state: dict) -> str:
-    parts = ["# Plano Bismarck", "", "## Objetivo", "", state.get("objetivo") or "Defina aqui o objetivo principal do plano.",
+    parts = ["# Plano", "", "## Objetivo", "", state.get("objetivo") or "Defina aqui o objetivo principal do plano.",
              "", "## Plano de trabalho", "", "Registre neste arquivo as frentes, prioridades e critérios de sucesso.",
              "", "## Atualizações aprovadas", "", "<!-- JAVIS:DECISOES:INICIO -->", "## Decisões", ""]
     decisions = state.get("decisoes", [])
@@ -182,11 +183,44 @@ def _read_state_file(path: Path) -> dict:
     return saved
 
 
+def migrate_legacy_data() -> str:
+    """Traz os dados da pasta antiga (JavisBismarck) para a pasta nova (Javis).
+
+    O estado e o plano da pasta antiga têm prioridade: são os dados reais de
+    quem usava o app antes. Os demais arquivos (log, backups) só são copiados
+    se ainda não existirem no destino. Devolve um aviso curto, ou string vazia.
+    """
+    if not LEGACY_DATA_DIR.exists():
+        return ""
+    import shutil
+
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        for item in LEGACY_DATA_DIR.iterdir():
+            target = DATA_DIR / item.name
+            if target.exists():
+                continue
+            if item.is_dir():
+                shutil.copytree(item, target)
+            else:
+                shutil.copy2(item, target)
+        old_state = DATA_DIR / "estado_plano_bismarck.json"
+        if old_state.exists():
+            old_state.replace(STATE_FILE)
+        old_plan = DATA_DIR / "Plano_Bismarck.md"
+        if old_plan.exists():
+            old_plan.replace(PLAN_FILE)
+    except OSError:
+        log.exception("Falha ao migrar a pasta de dados antiga")
+        return ""
+    return f"Os dados foram migrados de {LEGACY_DATA_DIR.name} para {DATA_DIR.name}."
+
+
 def load_state() -> tuple[dict, str]:
     """Carrega o estado. Se o arquivo estiver corrompido, guarda uma cópia e tenta o backup mais recente."""
+    notice = migrate_legacy_data()
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     state = initial_state()
-    notice = ""
     if STATE_FILE.exists():
         try:
             state.update(_read_state_file(STATE_FILE))
@@ -243,6 +277,6 @@ def backup_plan(previous: str) -> None:
     if not previous:
         return
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    atomic_write(BACKUP_DIR / f"Plano_Bismarck_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.md", previous)
-    for old in sorted(BACKUP_DIR.glob("Plano_Bismarck_*.md"), reverse=True)[PLAN_BACKUP_LIMIT:]:
+    atomic_write(BACKUP_DIR / f"Plano_Javis_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.md", previous)
+    for old in sorted(BACKUP_DIR.glob("Plano_*.md"), reverse=True)[PLAN_BACKUP_LIMIT:]:
         old.unlink(missing_ok=True)
