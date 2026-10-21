@@ -975,7 +975,7 @@ class JavisApp:
         title = tk.Label(side, text="JAVIS", bg=bgc, fg=hexc(t["text"]),
                          font=(self.family, self.base_size + 7, "bold"))
         title.pack(anchor="w", padx=(10, 0), pady=(14, 0))
-        sub = tk.Label(side, text="Plano Bismarck", bg=bgc, fg=hexc(t["muted"]), font=self.f_small)
+        sub = tk.Label(side, text="Assistente local", bg=bgc, fg=hexc(t["muted"]), font=self.f_small)
         sub.pack(anchor="w", padx=(12, 0), pady=(2, 0))
         self.sidebar_title, self.sidebar_sub = title, sub
 
@@ -1181,7 +1181,7 @@ class JavisApp:
         self._bind_context(self.decisions_tree, menu)
 
     def _build_plan(self, tab) -> None:
-        self._header(tab, "Plano Bismarck", "Edite o plano diretamente. Cada gravação guarda uma cópia da versão anterior neste computador.")
+        self._header(tab, "Plano", "Edite o plano diretamente. Cada gravação guarda uma cópia da versão anterior neste computador.")
         bar = ttk.Frame(tab)
         bar.pack(fill="x", pady=(0, 8))
         GlassButton(bar, text="Salvar plano", style="Action.TButton", command=self.save_plan).pack(side="left")
@@ -1439,7 +1439,7 @@ class JavisApp:
             self.set_status("Selecione um registro primeiro.", "warn")
             return
         note_id = note.get("id")
-        self.analyze(f"Analise o registro {note_id} em foco e compare com o Plano Bismarck, as decisões, ações e resultados anteriores.",
+        self.analyze(f"Analise o registro {note_id} em foco e compare com o plano, as decisões, ações e resultados anteriores.",
                      note_id=note_id)
 
     def save_note(self) -> None:
@@ -1800,7 +1800,7 @@ class JavisApp:
                 backup_plan(previous)
             atomic_write(PLAN_FILE, content)
         self.state["plano"] = content
-        add_history(self.state, "Plano Bismarck atualizado." if changed else "Plano Bismarck conferido; sem alterações.")
+        add_history(self.state, "Plano atualizado." if changed else "Plano conferido; sem alterações.")
         save_state(self.state)
         self.plan_box.edit_modified(False)
         self.dirty_label.configure(text="")
@@ -1823,7 +1823,7 @@ class JavisApp:
         self.set_status("Plano recarregado do disco.", "ok")
 
     def show_plan_versions(self) -> None:
-        versions = sorted(BACKUP_DIR.glob("Plano_Bismarck_*.md"), reverse=True)[:50] if BACKUP_DIR.exists() else []
+        versions = sorted(BACKUP_DIR.glob("Plano_*.md"), reverse=True)[:50] if BACKUP_DIR.exists() else []
         if not versions:
             self.set_status("Ainda não há versões anteriores. Elas são criadas quando você salva uma alteração.", "warn")
             return
@@ -1941,7 +1941,7 @@ class JavisApp:
         typed = self.input_box.get("1.0", "end").strip()
         user_text = prompt_override if prompt_override is not None else typed
         if not user_text:
-            user_text = "Revise o estado atual do Plano Bismarck. Identifique mudanças relevantes, riscos e próximos passos."
+            user_text = "Revise o estado atual do plano. Identifique mudanças relevantes, riscos e próximos passos."
         if len(user_text) > 50000:
             self.set_status("Conteúdo muito longo para análise; será considerado um resumo do pedido.", "warn")
             user_text = user_text[:50000]
@@ -2321,7 +2321,7 @@ class JavisApp:
         if not path:
             return
         s = self.state
-        out = [f"# {s.get('projeto', 'Plano Bismarck')} — exportação de {stamp()}", "", "## Plano", "",
+        out = [f"# {s.get('projeto', 'Javis')} — exportação de {stamp()}", "", "## Plano", "",
                self.plan_box.get("1.0", "end").strip(), "", "## Decisões", ""]
         out += [f"- **{d.get('id')}** ({d.get('status', 'vigente')}, {br_date(d.get('data'))}): {d.get('texto')}"
                 + (f" — motivo: {d['motivo']}" if d.get("motivo") else "") for d in s["decisoes"]] or ["- Nenhuma."]

@@ -14,8 +14,10 @@ __pycache__/
 *.log
 *.tmp
 
-# Dados privados do Javis (normalmente ficam em %LOCALAPPDATA%\JavisBismarck)
+# Dados privados do Javis (normalmente ficam em %LOCALAPPDATA%\Javis)
+estado.json
 estado_plano_bismarck.json
+Plano.md
 Plano_Bismarck.md
 versoes_plano/
 backups_estado/

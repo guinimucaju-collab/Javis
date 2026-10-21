@@ -6,7 +6,7 @@ import os
 import urllib.parse
 from pathlib import Path
 
-APP_NAME = "Javis — Plano Bismarck"
+APP_NAME = "Javis"
 APP_VERSION = "4.0"
 
 # O Javis só conversa com o Ollama neste computador. A variável abaixo existe
@@ -24,12 +24,17 @@ OLLAMA_URL = ollama_base() + "/api/chat"
 OLLAMA_TAGS_URL = ollama_base() + "/api/tags"
 
 LOCAL_DATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-DATA_DIR = Path(os.environ.get("JAVIS_DATA_DIR") or (LOCAL_DATA / "JavisBismarck"))
-STATE_FILE = DATA_DIR / "estado_plano_bismarck.json"
-PLAN_FILE = DATA_DIR / "Plano_Bismarck.md"
+DATA_DIR = Path(os.environ.get("JAVIS_DATA_DIR") or (LOCAL_DATA / "Javis"))
+STATE_FILE = DATA_DIR / "estado.json"
+PLAN_FILE = DATA_DIR / "Plano.md"
 BACKUP_DIR = DATA_DIR / "versoes_plano"
 STATE_BACKUP_DIR = DATA_DIR / "backups_estado"
 LOG_FILE = DATA_DIR / "javis.log"
+
+# Pastas e nomes usados antes da mudança para "Javis" (o app migrou sozinho).
+LEGACY_DATA_DIR = LOCAL_DATA / "JavisBismarck"
+LEGACY_STATE_FILE = LEGACY_DATA_DIR / "estado_plano_bismarck.json"
+LEGACY_PLAN_FILE = LEGACY_DATA_DIR / "Plano_Bismarck.md"
 
 MODEL = "qwen3:4b-instruct"
 FALLBACK_MODEL = "qwen3:4b"

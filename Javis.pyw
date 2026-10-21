@@ -1,4 +1,4 @@
-"""Javis — interface local do Plano Bismarck.
+"""Javis — assistente local de segunda cérebro.
 
 Este arquivo é apenas o ponto de entrada: o código mora no pacote `javis/`,
 dividido em módulos (config, storage, llm, theme, glass, ui).

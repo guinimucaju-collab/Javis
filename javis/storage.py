@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 from datetime import date, datetime
 from pathlib import Path
 
@@ -12,6 +13,10 @@ from .config import (
     ANALYSIS_LIMIT,
     DATA_DIR,
     HISTORY_LIMIT,
+    LEGACY_DATA_DIR,
+    LEGACY_PLAN_FILE,
+    LEGACY_STATE_FILE,
+    LOG_FILE,
     PLAN_BACKUP_LIMIT,
     PLAN_FILE,
     STATE_BACKUP_DIR,
@@ -121,7 +126,7 @@ def add_history(state: dict, text: str) -> None:
 
 def initial_state() -> dict:
     return {
-        "projeto": "Plano Bismarck",
+        "projeto": "Javis",
         "visao": "Javis como segundo cérebro operacional: registra contexto, analisa, sugere próximos passos e atualiza decisões confirmadas pela pessoa.",
         "objetivo": "",
         "notas": [],
@@ -137,7 +142,7 @@ def initial_state() -> dict:
 
 
 def make_initial_plan(state: dict) -> str:
-    parts = ["# Plano Bismarck", "", "## Objetivo", "", state.get("objetivo") or "Defina aqui o objetivo principal do plano.",
+    parts = ["# Plano", "", "## Objetivo", "", state.get("objetivo") or "Defina aqui o objetivo principal do plano.",
              "", "## Plano de trabalho", "", "Registre neste arquivo as frentes, prioridades e critérios de sucesso.",
              "", "## Atualizações aprovadas", "", "<!-- JAVIS:DECISOES:INICIO -->", "## Decisões", ""]
     decisions = state.get("decisoes", [])
@@ -167,6 +172,9 @@ def migrate_state(state: dict) -> dict:
     state.setdefault("acoes", [])
     state.setdefault("analises", [])
     state.setdefault("historico", [])
+    # Estados antigos ainda traziam o nome antigo do projeto.
+    if state.get("projeto") in {"Plano Bismarck", "Bismarck"}:
+        state["projeto"] = "Javis"
     # Arquivos antigos vinham sem 'status' em cada relação.
     for relation in state.get("relacoes", []):
         if isinstance(relation, dict) and "status" not in relation:
@@ -182,11 +190,45 @@ def _read_state_file(path: Path) -> dict:
     return saved
 
 
+def migrate_legacy_data() -> str:
+    """Move os dados da pasta antiga (JavisBismarck) para a pasta do Javis.
+
+    Só roda quando a pasta nova ainda não tem dados. Devolve uma aviso para o
+    app mostrar, ou string vazia.
+    """
+    if not LEGACY_DATA_DIR.exists() or STATE_FILE.exists():
+        return ""
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if LEGACY_STATE_FILE.exists():
+            shutil.move(str(LEGACY_STATE_FILE), str(STATE_FILE))
+        if LEGACY_PLAN_FILE.exists():
+            shutil.move(str(LEGACY_PLAN_FILE), str(PLAN_FILE))
+        old_versions = LEGACY_DATA_DIR / "versoes_plano"
+        if old_versions.exists():
+            old_versions.mkdir(parents=True, exist_ok=True)
+            for item in old_versions.glob("Plano_Bismarck_*.md"):
+                item.rename(old_versions / item.name.replace("Plano_Bismarck_", "Plano_"))
+            shutil.rmtree(old_versions, ignore_errors=True)
+        for folder in ("backups_estado",):
+            old_folder = LEGACY_DATA_DIR / folder
+            if old_folder.exists():
+                shutil.copytree(old_folder, DATA_DIR / folder, dirs_exist_ok=True)
+        log_file = LEGACY_DATA_DIR / "javis.log"
+        if log_file.exists():
+            shutil.copy2(str(log_file), str(LOG_FILE))
+        shutil.rmtree(LEGACY_DATA_DIR, ignore_errors=True)
+        return f"Os seus dados foram movidos de {LEGACY_DATA_DIR.name} para {DATA_DIR.name}."
+    except OSError:
+        log.exception("Falha ao migrar os dados da pasta antiga")
+        return ""
+
+
 def load_state() -> tuple[dict, str]:
     """Carrega o estado. Se o arquivo estiver corrompido, guarda uma cópia e tenta o backup mais recente."""
+    notice = migrate_legacy_data()
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     state = initial_state()
-    notice = ""
     if STATE_FILE.exists():
         try:
             state.update(_read_state_file(STATE_FILE))
@@ -211,6 +253,13 @@ def load_state() -> tuple[dict, str]:
         state[key] = [x for x in value if isinstance(x, dict)] if isinstance(value, list) else []
     if PLAN_FILE.exists():
         state["plano"] = read_text_safe(PLAN_FILE)  # o .md editável é a fonte da verdade
+        # Planos escritos pela versão antiga ainda começavam com o nome antigo.
+        if state["plano"].lstrip().startswith("# Plano Bismarck"):
+            state["plano"] = state["plano"].replace("# Plano Bismarck", "# Plano", 1)
+            try:
+                PLAN_FILE.write_text(state["plano"], encoding="utf-8")
+            except OSError:
+                log.exception("Falha ao renomear o título do plano")
     else:
         state["plano"] = state.get("plano") or make_initial_plan(state)
         PLAN_FILE.write_text(state["plano"], encoding="utf-8")
@@ -243,6 +292,6 @@ def backup_plan(previous: str) -> None:
     if not previous:
         return
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    atomic_write(BACKUP_DIR / f"Plano_Bismarck_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.md", previous)
-    for old in sorted(BACKUP_DIR.glob("Plano_Bismarck_*.md"), reverse=True)[PLAN_BACKUP_LIMIT:]:
+    atomic_write(BACKUP_DIR / f"Plano_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.md", previous)
+    for old in sorted(BACKUP_DIR.glob("Plano_*.md"), reverse=True)[PLAN_BACKUP_LIMIT:]:
         old.unlink(missing_ok=True)
