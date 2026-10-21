@@ -23,7 +23,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from . import acrylic, glass, llm, widgets
 from .widgets import (GlassButton, GlassCheck, GlassCombo, GlassEntry, GlassField, GlassMenubutton, GlassNav,
-                      GlassScrollbar)
+                      GlassRadio, GlassScrollbar)
 from .config import (
     APP_NAME,
     APP_VERSION,
@@ -71,6 +71,7 @@ NAV_ITEMS = [
     ("decisions", "Decisões"),
     ("plan", "Plano"),
     ("history", "Histórico"),
+    ("settings", "Configurações"),
 ]
 
 SIDEBAR_W = 236
@@ -84,6 +85,7 @@ class JavisApp:
         self.theme_name = self.state.get("tema") if self.state.get("tema") in THEMES else DEFAULT_THEME
         self.theme = get_theme(self.theme_name)
         self.colors = self.theme
+        self.theme_var = tk.StringVar(master=root, value=self.theme_name)
         self.scale = max(1.0, root.winfo_fpixels("1i") / 96)
 
         # IA e análise
@@ -130,7 +132,10 @@ class JavisApp:
         self._backdrop_photo: tk.PhotoImage | None = None
         self._scene_key = None      # evita redesenhar a mesma cena
         self.acrylic_on = False     # janela realmente transparente (Windows)
-        self.acrylic_var = tk.BooleanVar(master=root, value=bool(self.state.get("acrilico", True)) and acrylic.IS_WINDOWS)
+        # O fundo padrão é a aurora do tema; o acrílico (que mostra o desktop
+        # desfocado por trás) é opcional e fica desligado por padrão.
+        self.acrylic_var = tk.BooleanVar(master=root,
+                                         value=bool(self.state.get("acrilico", False)) and acrylic.IS_WINDOWS)
         self._colors_key = None     # evita reaplicar as mesmas cores
         self._laid_size = None      # último tamanho de janela posicionado
         self._layout_pending = False
@@ -225,6 +230,12 @@ class JavisApp:
         self.state["fonte"] = size
         save_state(self.state)
         self.apply_theme()
+        label = getattr(self, "font_size_label", None)
+        if label is not None:
+            try:
+                label.configure(text=f"Tamanho atual: {size}")
+            except tk.TclError:
+                pass
 
     def set_theme(self, name: str) -> None:
         if name not in THEMES:
@@ -232,17 +243,14 @@ class JavisApp:
         self.theme_name = name
         self.theme = get_theme(name)
         self.colors = self.theme
+        if self.theme_var.get() != name:
+            self.theme_var.set(name)
         self.state["tema"] = name
         save_state(self.state)
         self.apply_theme()
         if self.acrylic_on:
             self._set_acrylic(True)
         self.set_status(f"Tema {self.theme['label']} aplicado.", "ok")
-
-    def toggle_theme(self) -> None:
-        order = list(THEMES.keys())
-        index = order.index(self.theme_name) if self.theme_name in order else 0
-        self.set_theme(order[(index + 1) % len(order)])
 
     def apply_theme(self) -> None:
         t, s, px = self.theme, self.style, self.px
@@ -543,8 +551,7 @@ class JavisApp:
                 walk(child)
 
         walk(self.sidebar)
-        for widget, color in ((self.sidebar_title, t["text"]), (self.sidebar_sub, t["muted"]),
-                              (self.theme_btn, t["muted"])):
+        for widget, color in ((self.sidebar_title, t["text"]), (self.sidebar_sub, t["muted"])):
             widget.configure(fg=hexc(color))
         self._highlight_nav(self.current_page)
 
@@ -672,7 +679,6 @@ class JavisApp:
         b("<Control-n>", self.focus_input)
         b("<Control-f>", self.focus_search)
         b("<Control-q>", self.close)
-        b("<Control-t>", self.toggle_theme)
         b("<F5>", self.check_ollama)
         b("<Escape>", self.stop_analysis, only_if=lambda: self.busy)
         for index, (key, _label) in enumerate(NAV_ITEMS, start=1):
@@ -715,7 +721,7 @@ class JavisApp:
             m.add_command(label=label, accelerator=f"Ctrl+{index}", command=lambda k=key: self.show_page(k))
         m.add_separator()
         for name, spec in THEMES.items():
-            m.add_command(label=spec["label"], command=lambda n=name: self.set_theme(n))
+            m.add_command(label=f"Tema: {spec['label']}", command=lambda n=name: self.set_theme(n))
         if acrylic.IS_WINDOWS:
             m.add_separator()
             m.add_checkbutton(label="Fundo transparente (acrílico)", variable=self.acrylic_var,
@@ -888,6 +894,7 @@ class JavisApp:
         self._build_decisions(self.pages["decisions"])
         self._build_plan(self.pages["plan"])
         self._build_history(self.pages["history"])
+        self._build_settings(self.pages["settings"])
 
         # Barra de status: no rodapé, por cima de tudo.
         self.status_bar = ttk.Frame(root, style="Status.TFrame")
@@ -991,10 +998,7 @@ class JavisApp:
                                  justify="left", anchor="w", wraplength=self.px(160))
         self.ai_label.pack(fill="x", padx=10, pady=(0, 10))
 
-        theme_btn = tk.Label(side, text="◐  Alternar tema", bg=bgc, fg=hexc(t["muted"]),
-                             font=self.f_small, cursor="hand2")
-        theme_btn.pack(anchor="w", padx=10, pady=(0, 8))
-        theme_btn.bind("<Button-1>", lambda _e: self.toggle_theme())
+        theme_btn = None  # o tema agora é escolhido em Configurações
         self.theme_btn = theme_btn
 
     def _build_capture(self, tab) -> None:
@@ -1209,6 +1213,55 @@ class JavisApp:
         pane.add(detail, weight=2)
         self.history_tree.bind("<<TreeviewSelect>>", lambda _e: self.show_history_detail())
         self.history_tree.bind("<Double-1>", lambda _e: self.reopen_analysis())
+
+    # ----- configurações -------------------------------------------------------
+
+    def _build_settings(self, tab) -> None:
+        """Página de configurações: tema, fundo e tamanho do texto."""
+        self._header(tab, "Configurações",
+                     "Aparência do Javis neste computador. Tudo o que você escolher aqui vale já na próxima abertura.")
+
+        # --- Tema
+        ttk.Label(tab, text="Tema", style="Bold.TLabel").pack(anchor="w")
+        self._wrap_label(tab, "O tema escolhido é salvo e volta a ser usado na próxima vez que você abrir o Javis."
+                         ).pack(fill="x", pady=(2, 6))
+        themes = ttk.Frame(tab)
+        themes.pack(fill="x")
+        for name, spec in THEMES.items():
+            GlassRadio(themes, text=spec["label"], variable=self.theme_var, value=name,
+                       command=self._apply_theme_choice).pack(anchor="w", pady=3)
+
+        # --- Fundo
+        ttk.Label(tab, text="Fundo", style="Bold.TLabel").pack(anchor="w", pady=(20, 0))
+        self._wrap_label(tab, "Por padrão o fundo é a aurora do tema. O fundo transparente usa o desfoque do "
+                              "próprio Windows e mostra o que estiver atrás da janela (por isso fica com a cor "
+                              "do desktop, e não a do tema).").pack(fill="x", pady=(2, 6))
+        if acrylic.IS_WINDOWS:
+            GlassCheck(tab, text="Usar fundo transparente (acrílico do Windows)",
+                       variable=self.acrylic_var, command=self.toggle_acrylic).pack(anchor="w", pady=3)
+
+        # --- Texto
+        ttk.Label(tab, text="Texto", style="Bold.TLabel").pack(anchor="w", pady=(20, 0))
+        row = ttk.Frame(tab)
+        row.pack(fill="x", pady=(4, 0))
+        GlassButton(row, text="A−", style="Ghost.TButton",
+                    command=lambda: self.set_font_size(self.base_size - 1)).pack(side="left")
+        GlassButton(row, text="A+", style="Ghost.TButton",
+                    command=lambda: self.set_font_size(self.base_size + 1)).pack(side="left", padx=8)
+        self.font_size_label = ttk.Label(row, text=f"Tamanho atual: {self.base_size}")
+        self.font_size_label.pack(side="left")
+
+        # --- Dados
+        ttk.Label(tab, text="Dados", style="Bold.TLabel").pack(anchor="w", pady=(20, 0))
+        ttk.Label(tab, text=f"Os seus registros ficam em {DATA_DIR}", style="Sub.TLabel").pack(anchor="w", pady=(2, 0))
+        GlassButton(tab, text="Abrir pasta de dados", style="Ghost.TButton",
+                    command=self.open_data_folder).pack(anchor="w", pady=(8, 0))
+
+    def _apply_theme_choice(self) -> None:
+        """Aplica o tema escolhido nos botões de opção da página."""
+        name = self.theme_var.get()
+        if name in THEMES and name != self.theme_name:
+            self.set_theme(name)
 
     # ----- navegação e status --------------------------------------------------
 
@@ -2309,7 +2362,7 @@ class JavisApp:
         messagebox.showinfo("Atalhos de teclado", "\n".join([
             "Ctrl+Enter — Guardar registro", "Ctrl+R — Analisar rápido", "Ctrl+Shift+R — Análise aprofundada",
             "Esc — Parar análise", "Ctrl+N — Novo registro", "Ctrl+O — Abrir arquivo", "Ctrl+S — Salvar plano",
-            "Ctrl+F — Pesquisar registros", "Ctrl+1 … 6 — Trocar de seção", "Ctrl+T — Trocar de tema",
+            "Ctrl+F — Pesquisar registros", "Ctrl+1 … 7 — Trocar de seção",
             "Ctrl++ / Ctrl+- / Ctrl+0 — Tamanho da fonte", "F5 — Reconectar ao Ollama / atualizar modelos",
             "Ctrl+Q — Sair", "", "Botão direito nas listas — menu de ações",
             "Clique no cabeçalho de uma coluna — ordenar", "Clique em N-001, A-002… na análise — abrir o item"]))
