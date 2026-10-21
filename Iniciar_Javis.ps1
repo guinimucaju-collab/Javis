@@ -35,7 +35,7 @@ if (-not $Python) {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.MessageBox]::Show(
         "O Python não foi encontrado. Instale o Python 3.11 ou superior (python.org, marcando a opção do Python Launcher) e depois abra o Javis pelo atalho.",
-        "Javis",
+        "Javis — Plano Bismarck",
         [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Information
     ) | Out-Null

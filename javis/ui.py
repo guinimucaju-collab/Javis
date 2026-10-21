@@ -21,7 +21,9 @@ from datetime import date, datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from . import glass, llm
+from . import glass, llm, widgets
+from .widgets import (GlassButton, GlassCheck, GlassCombo, GlassEntry, GlassField, GlassMenubutton, GlassNav,
+                      GlassScrollbar)
 from .config import (
     APP_NAME,
     APP_VERSION,
@@ -118,8 +120,8 @@ class JavisApp:
         self.sort_state: dict[str, tuple[str | None, bool]] = {}
         self.shortcuts: list[tuple[str, object]] = []
         self.pages: dict[str, ttk.Frame] = {}
-        self.nav: dict[str, tk.Canvas] = {}
-        self.nav_labels: dict[str, tk.Label] = {}
+        self.nav: dict[str, GlassNav] = {}
+        self.nav_labels: dict[str, GlassNav] = {}
         self.current_page = "capture"
         self.ai_status = ("Verificando IA local…", "muted")
         self._debounce_ids: dict[str, str] = {}
@@ -140,6 +142,7 @@ class JavisApp:
         self._init_fonts()
         self.style = ttk.Style(root)
         self._glass_palette()
+        self._sync_skin()
         self.auto_var = tk.BooleanVar(value=bool(self.state.get("auto_analysis_enabled", True)))
         self._setup_shortcuts()
         self._build_menu()
@@ -335,10 +338,10 @@ class JavisApp:
 
     def _style_text(self, widget: tk.Text) -> None:
         t = self.theme
-        widget.configure(background=hexc(darken(t["surface"], 0.35)), foreground=hexc(t["text"]),
+        widget.configure(background=self.glass_well, foreground=hexc(t["text"]),
                          insertbackground=hexc(t["text"]), selectbackground=hexc(t["accent"]),
                          selectforeground=hexc(t["accent_fg"]), inactiveselectbackground=hexc(t["accent"]),
-                         highlightbackground=hexc(darken(t["surface"], 0.45)), highlightcolor=hexc(t["accent"]))
+                         highlightbackground=self.glass_well, highlightcolor=self.glass_well)
 
     def _hoverable(self, widget, on_enter, on_leave) -> None:
         """Liga o realce de hover num widget ttk ou tk."""
@@ -350,26 +353,8 @@ class JavisApp:
 
     def make_button(self, parent, text: str, command, style: str = "Ghost.TButton", accent: bool = False,
                     state: str = "normal"):
-        """Botão com realce suave ao passar o mouse."""
-        button = ttk.Button(parent, text=text, style=style, command=command, state=state)
-        cursor = "hand2"
-
-        def on_enter() -> None:
-            try:
-                if "disabled" not in button.state():
-                    button.configure(cursor=cursor)
-                    button.state(["active"])
-            except tk.TclError:
-                pass
-
-        def on_leave() -> None:
-            try:
-                button.state(["!active"])
-            except tk.TclError:
-                pass
-
-        self._hoverable(button, on_enter, on_leave)
-        return button
+        """Botão de vidro (o hover animado é do próprio GlassButton)."""
+        return GlassButton(parent, text=text, style=style, command=command, state=state)
 
     def toast(self, message: str, kind: str = "ok") -> None:
         """Notificação flutuante no canto inferior direito."""
@@ -409,7 +394,9 @@ class JavisApp:
         if hasattr(self, "history_detail"):
             self.history_detail.tag_configure("h", foreground=hexc(t["accent"]), font=self.f_bold)
 
-    def style_combo(self, combo: ttk.Combobox, register: bool = True) -> None:
+    def style_combo(self, combo, register: bool = True) -> None:
+        if not isinstance(combo, ttk.Combobox):  # o GlassCombo se estiliza sozinho
+            return
         if register:
             self.combos.append(combo)
         t = self.theme
@@ -423,8 +410,8 @@ class JavisApp:
 
     def make_text(self, parent, height: int = 5, font=None, readonly: bool = False) -> tk.Text:
         widget = tk.Text(parent, height=height, wrap="word", font=font or self.f_base, padx=self.px(10),
-                         pady=self.px(8), relief="flat", borderwidth=0, highlightthickness=1,
-                         undo=not readonly, bg=hexc(darken(self.theme["surface"], 0.35)),
+                         pady=self.px(8), relief="flat", borderwidth=0, highlightthickness=0,
+                         undo=not readonly, bg=self.glass_well,
                          fg=hexc(self.theme["text"]))
         self._style_text(widget)
         if readonly:
@@ -444,6 +431,10 @@ class JavisApp:
         self.glass_surface = hexc(self.glass_color)
         self.glass_well = hexc(self.well_color)
         self.glass_line = hexc(darken(self.glass_color, 0.25 if is_light(t) else 0.55))
+
+    def _sync_skin(self) -> None:
+        """Entrega tema e fontes aos controles de vidro (eles se repintam sozinhos)."""
+        widgets.set_skin(self.theme, self.scale, self.f_base, self.f_bold, self.f_input)
 
     def _render_backdrop(self) -> None:
         """Desenha o fundo aurora com os painéis de vidro (só se algo mudou)."""
@@ -490,6 +481,7 @@ class JavisApp:
             return
         self._colors_key = key
         self._glass_palette()
+        self._sync_skin()
         for frame in [*getattr(self, "glass_frames", []), getattr(self, "page_host", None)]:
             try:
                 if frame is not None and frame.winfo_exists():
@@ -555,8 +547,9 @@ class JavisApp:
             self.style.configure("H.TLabel", background=self.glass_surface)
             self.style.configure("Bold.TLabel", background=self.glass_surface)
             self.style.configure("Title.TLabel", background=self.glass_surface, foreground=hexc(self.theme["text"]))
-            self.style.configure("Banner.TFrame", background=self.glass_well)
-            self.style.configure("Banner.TLabel", background=self.glass_well, foreground=hexc(self.theme["text"]))
+            banner = hexc(mix(self.glass_color, self.theme["accent"], 0.14))
+            self.style.configure("Banner.TFrame", background=banner)
+            self.style.configure("Banner.TLabel", background=banner, foreground=hexc(self.theme["text"]))
             self.style.configure("TPanedwindow", background=self.glass_surface)
             # Botões de vidro: um tom acima da placa (abaixo, no tema claro), com contorno fino.
             light = is_light(self.theme)
@@ -580,6 +573,24 @@ class JavisApp:
             bar = hexc(darken(self.glass_color, 0.10 if light else 0.35))
             self.style.configure("Status.TFrame", background=bar)
             self.style.configure("Status.TLabel", background=bar)
+            # Tabelas: linhas largas, cabeçalho discreto, seleção e hover suaves.
+            well, light = self.glass_well, is_light(self.theme)
+            accent = self.theme["accent"]
+            head = hexc(darken(self.well_color, 0.06) if light else darken(self.well_color, 0.12))
+            self.style.configure("Treeview", background=well, fieldbackground=well, bordercolor=well,
+                                 lightcolor=well, darkcolor=well, borderwidth=0, relief="flat",
+                                 foreground=hexc(self.theme["text"]), rowheight=self.f_base.metrics("linespace") + self.px(14))
+            self.style.configure("Treeview.Heading", background=head, foreground=hexc(self.theme["muted"]),
+                                 relief="flat", borderwidth=0, bordercolor=head, lightcolor=head, darkcolor=head,
+                                 padding=(self.px(10), self.px(8)), font=self.f_bold)
+            self.style.map("Treeview.Heading", background=[("active", hexc(mix(self.well_color, accent, 0.20)))])
+            self.style.map("Treeview", background=[("selected", hexc(accent))],
+                           foreground=[("selected", hexc(self.theme["accent_fg"]))])
+            odd = hexc(darken(self.well_color, 0.04) if light else lighten(self.well_color, 0.035))
+            hover = hexc(mix(self.well_color, accent, 0.20))
+            for tree in getattr(self, "trees", {}).values():
+                tree.tag_configure("odd", background=odd)
+                tree.tag_configure("hover", background=hover)
             # Divisória arrastável: sem o "pino" escuro padrão do tema clam.
             self.style.configure("Sash", sashthickness=self.px(8), gripcount=0, background=self.glass_surface,
                                  lightcolor=self.glass_surface, darkcolor=self.glass_surface,
@@ -700,26 +711,32 @@ class JavisApp:
             self._wrap_label(parent, subtitle).pack(fill="x", pady=(2, 10))
 
     def _scrolled_text(self, parent, height: int = 5, font=None, readonly: bool = False):
-        frame = ttk.Frame(parent)
-        text = self.make_text(frame, height=height, font=font, readonly=readonly)
-        bar = ttk.Scrollbar(frame, orient="vertical", command=text.yview)
+        field = GlassField(parent, pad=3)
+        text = self.make_text(field.body, height=height, font=font, readonly=readonly)
+        bar = GlassScrollbar(field.body, command=text.yview)
         text.configure(yscrollcommand=bar.set)
         text.grid(row=0, column=0, sticky="nsew")
-        bar.grid(row=0, column=1, sticky="ns")
-        frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(0, weight=1)
-        return frame, text
+        bar.grid(row=0, column=1, sticky="ns", padx=(self.px(4), 0))
+        field.body.columnconfigure(0, weight=1)
+        field.body.rowconfigure(0, weight=1)
+        field.watch(text)
+        return field, text
 
     def _make_tree(self, parent, name: str, columns: list[tuple], height: int = 8):
         """columns: (chave, título, largura, estica, alinhamento)."""
-        wrap = ttk.Frame(parent)
-        tree = ttk.Treeview(wrap, columns=[c[0] for c in columns], show="headings", selectmode="browse", height=height)
-        bar = ttk.Scrollbar(wrap, orient="vertical", command=tree.yview)
+        wrap = GlassField(parent, pad=3)
+        tree = ttk.Treeview(wrap.body, columns=[c[0] for c in columns], show="headings", selectmode="browse",
+                            height=height)
+        bar = GlassScrollbar(wrap.body, command=tree.yview)
         tree.configure(yscrollcommand=bar.set)
         tree.grid(row=0, column=0, sticky="nsew")
-        bar.grid(row=0, column=1, sticky="ns")
-        wrap.columnconfigure(0, weight=1)
-        wrap.rowconfigure(0, weight=1)
+        bar.grid(row=0, column=1, sticky="ns", padx=(self.px(4), 0))
+        wrap.body.columnconfigure(0, weight=1)
+        wrap.body.rowconfigure(0, weight=1)
+        wrap.watch(tree)
+        hover = {"item": ""}
+        tree.bind("<Motion>", lambda e: self._tree_hover(tree, hover, tree.identify_row(e.y)), add="+")
+        tree.bind("<Leave>", lambda _e: self._tree_hover(tree, hover, ""), add="+")
         for key, title, width, stretch, anchor in columns:
             tree.heading(key, text=title, anchor=anchor, command=lambda k=key, n=name: self._sort_by(n, k))
             tree.column(key, width=self.px(width), minwidth=self.px(50), stretch=stretch, anchor=anchor)
@@ -727,6 +744,31 @@ class JavisApp:
         self.tree_cols[name] = [c[0] for c in columns]
         self.tree_titles[name] = {c[0]: c[1] for c in columns}
         return wrap, tree
+
+    @staticmethod
+    def _tree_hover(tree: ttk.Treeview, state: dict, row: str) -> None:
+        """Realce da linha sob o mouse.
+
+        A tag 'odd' (listra) tem prioridade sobre 'hover', então a linha em
+        hover troca 'odd' por 'hover' e a listra volta quando o mouse sai.
+        """
+        if row == state["item"]:
+            return
+
+        def tags_of(item: str) -> tuple:
+            tags = tree.item(item, "tags")
+            return (tags,) if isinstance(tags, str) and tags else tuple(tags or ())
+
+        old = state["item"]
+        if old and tree.exists(old):
+            tags = tuple(t for t in tags_of(old) if t != "hover")
+            tree.item(old, tags=tags + (("odd",) if state.get("odd") else ()))
+        state["odd"] = False
+        if row and tree.exists(row):
+            tags = tags_of(row)
+            state["odd"] = "odd" in tags
+            tree.item(row, tags=("hover",) + tuple(t for t in tags if t != "odd"))
+        state["item"] = row
 
     def _sort_by(self, name: str, column: str) -> None:
         current, reverse = self.sort_state.get(name, (None, False))
@@ -885,7 +927,7 @@ class JavisApp:
         title = tk.Label(side, text="JAVIS", bg=bgc, fg=hexc(t["text"]),
                          font=(self.family, self.base_size + 7, "bold"))
         title.pack(anchor="w", padx=(10, 0), pady=(14, 0))
-        sub = tk.Label(side, text="Plano", bg=bgc, fg=hexc(t["muted"]), font=self.f_small)
+        sub = tk.Label(side, text="Plano Bismarck", bg=bgc, fg=hexc(t["muted"]), font=self.f_small)
         sub.pack(anchor="w", padx=(12, 0), pady=(2, 0))
         self.sidebar_title, self.sidebar_sub = title, sub
 
@@ -893,20 +935,13 @@ class JavisApp:
         nav_frame.pack(fill="x", pady=(22, 0))
         self.nav_canvas = nav_frame
 
-        self.nav_buttons: list[tk.Frame] = []
+        self.nav_buttons: list[GlassNav] = []
         for key, label in NAV_ITEMS:
-            holder = tk.Frame(nav_frame, bg=bgc, height=42, cursor="hand2")
-            holder.pack(fill="x", padx=2, pady=2)
-            holder.pack_propagate(False)
-            lbl = tk.Label(holder, text=label, bg=bgc, fg=hexc(t["muted"]), font=self.f_base, anchor="w", padx=14)
-            lbl.pack(fill="x", pady=9)
-            for widget in (holder, lbl):
-                widget.bind("<Button-1>", lambda _e, k=key: self.show_page(k))
-                widget.bind("<Enter>", lambda _e, k=key: self._nav_hover(k, True))
-                widget.bind("<Leave>", lambda _e, k=key: self._nav_hover(k, False))
-            self.nav[key] = holder
-            self.nav_labels[key] = lbl
-            self.nav_buttons.append(holder)
+            item = GlassNav(nav_frame, text=label, command=lambda k=key: self.show_page(k))
+            item.pack(fill="x", padx=2, pady=2)
+            self.nav[key] = item
+            self.nav_labels[key] = item
+            self.nav_buttons.append(item)
 
         spacer = tk.Frame(side, bg=bgc)
         spacer.pack(fill="both", expand=True)
@@ -920,15 +955,6 @@ class JavisApp:
         theme_btn.pack(anchor="w", padx=10, pady=(0, 8))
         theme_btn.bind("<Button-1>", lambda _e: self.toggle_theme())
         self.theme_btn = theme_btn
-
-    def _nav_hover(self, key: str, entering: bool) -> None:
-        """Realce suave ao passar o mouse; o item ativo mantém o destaque."""
-        if key == self.current_page:
-            return
-        t = self.theme
-        bg = hexc(lighten(self.glass_color, 0.10)) if entering else self.glass_surface
-        self.nav[key].configure(bg=bg)
-        self.nav_labels[key].configure(bg=bg, fg=hexc(t["text"]) if entering else hexc(t["muted"]))
 
     def _build_capture(self, tab) -> None:
         pane = ttk.PanedWindow(tab, orient="vertical")
@@ -944,7 +970,7 @@ class JavisApp:
         box_frame.pack(fill="both", expand=True)
         self.input_box.bind("<KeyRelease>", lambda _e: self._update_count())
 
-        ttk.Button(bar, text="Abrir arquivo…", style="Ghost.TButton", command=self.import_file).pack(side="left")
+        GlassButton(bar, text="Abrir arquivo…", style="Ghost.TButton", command=self.import_file).pack(side="left")
         self.make_button(bar, "Guardar registro", self.save_note, "Action.TButton", accent=True).pack(side="left", padx=8)
         self.analyze_btn = self.make_button(bar, "Analisar rápido", self.analyze, "Action.TButton", accent=True)
         self.analyze_btn.pack(side="left")
@@ -964,10 +990,10 @@ class JavisApp:
         head = ttk.Frame(bottom)
         head.grid(row=0, column=0, sticky="ew", pady=(10, 4))
         ttk.Label(head, text="Análise e próximos passos", style="H.TLabel").pack(side="left")
-        self.approve_plan_btn = ttk.Button(head, text="Aprovar atualização do plano…", style="Action.TButton",
+        self.approve_plan_btn = GlassButton(head, text="Aprovar atualização do plano…", style="Action.TButton",
                                             command=self.approve_plan_update, state="disabled")
         self.approve_plan_btn.pack(side="right")
-        ttk.Button(head, text="Copiar", style="Ghost.TButton", command=self.copy_analysis).pack(side="right", padx=(0, 8))
+        GlassButton(head, text="Copiar", style="Ghost.TButton", command=self.copy_analysis).pack(side="right", padx=(0, 8))
 
         self.relation_frame = ttk.Frame(bottom, style="Banner.TFrame", padding=(10, 8))
         self.relation_frame.grid(row=1, column=0, sticky="ew", pady=(0, 6))
@@ -975,9 +1001,10 @@ class JavisApp:
                                        wraplength=self.px(560))
         self.relation_text.bind("<Configure>", lambda e: self.relation_text.configure(wraplength=max(self.px(200), e.width - 8)))
         self.relation_text.pack(side="left", fill="x", expand=True)
-        ttk.Button(self.relation_frame, text="Ignorar", style="Ghost.TButton", command=self.ignore_relation).pack(side="right")
-        ttk.Button(self.relation_frame, text="Confirmar vínculo", style="Action.TButton",
-                   command=self.confirm_relation).pack(side="right", padx=6)
+        GlassButton(self.relation_frame, text="Ignorar", style="Ghost.TButton", ground="banner",
+                    command=self.ignore_relation).pack(side="right")
+        GlassButton(self.relation_frame, text="Confirmar vínculo", style="Action.TButton", ground="banner",
+                    command=self.confirm_relation).pack(side="right", padx=6)
         self.relation_frame.grid_remove()
 
         analysis_frame, self.analysis_box = self._scrolled_text(bottom, height=8, readonly=True)
@@ -987,12 +1014,12 @@ class JavisApp:
 
         opts = ttk.Frame(bottom)
         opts.grid(row=3, column=0, sticky="ew", pady=(8, 0))
-        ttk.Checkbutton(opts, text="Analisar ao guardar (local)", variable=self.auto_var,
+        GlassCheck(opts, text="Analisar ao guardar (local)", variable=self.auto_var,
                         command=self.save_auto_preference).pack(side="left")
-        self.refresh_models_btn = ttk.Button(opts, text="Atualizar modelos", style="Ghost.TButton", command=self.check_ollama)
+        self.refresh_models_btn = GlassButton(opts, text="Atualizar modelos", style="Ghost.TButton", command=self.check_ollama)
         self.refresh_models_btn.pack(side="right")
         self.model_var = tk.StringVar(value=self.state.get("preferred_model", ""))
-        self.model_combo = ttk.Combobox(opts, textvariable=self.model_var, state="disabled", width=22)
+        self.model_combo = GlassCombo(opts, textvariable=self.model_var, state="disabled", width=22)
         self.model_combo.pack(side="right", padx=(6, 8))
         self.style_combo(self.model_combo)
         self.model_combo.bind("<<ComboboxSelected>>", self.on_model_selected)
@@ -1005,17 +1032,17 @@ class JavisApp:
         row.pack(fill="x", pady=(0, 8))
         ttk.Label(row, text="Pesquisar:").pack(side="left")
         self.note_search = tk.StringVar()
-        self.search_entry = ttk.Entry(row, textvariable=self.note_search)
+        self.search_entry = GlassEntry(row, textvariable=self.note_search)
         self.search_entry.pack(side="left", fill="x", expand=True, padx=8)
-        ttk.Button(row, text="Limpar", style="Ghost.TButton", command=lambda: self.note_search.set("")).pack(side="left")
+        GlassButton(row, text="Limpar", style="Ghost.TButton", command=lambda: self.note_search.set("")).pack(side="left")
         self.note_count = ttk.Label(row, text="", style="Sub.TLabel")
         self.note_count.pack(side="left", padx=(10, 0))
         self.note_search.trace_add("write", lambda *_: self._debounce("notes", self.refresh_notes))
         buttons = ttk.Frame(tab)
         buttons.pack(side="bottom", fill="x", pady=(8, 0))
-        ttk.Button(buttons, text="Analisar registro selecionado", style="Action.TButton",
+        GlassButton(buttons, text="Analisar registro selecionado", style="Action.TButton",
                    command=self.analyze_selected_note).pack(side="left")
-        ttk.Button(buttons, text="Copiar texto", style="Ghost.TButton", command=self.copy_selected_note).pack(side="left", padx=8)
+        GlassButton(buttons, text="Copiar texto", style="Ghost.TButton", command=self.copy_selected_note).pack(side="left", padx=8)
         pane = ttk.PanedWindow(tab, orient="vertical")
         pane.pack(fill="both", expand=True)
         wrap, self.notes_tree = self._make_tree(pane, "notes", [("id", "ID", 80, False, "w"),
@@ -1040,7 +1067,7 @@ class JavisApp:
         row.pack(fill="x", pady=(0, 8))
         ttk.Label(row, text="Mostrar:").pack(side="left")
         self.action_filter = tk.StringVar(value="Todas")
-        combo = ttk.Combobox(row, textvariable=self.action_filter, state="readonly", width=14,
+        combo = GlassCombo(row, textvariable=self.action_filter, state="readonly", width=14,
                              values=["Todas", "Abertas", "Atrasadas", "Concluídas", "Canceladas"])
         combo.pack(side="left", padx=8)
         self.style_combo(combo)
@@ -1049,13 +1076,13 @@ class JavisApp:
         self.action_count.pack(side="left")
         buttons = ttk.Frame(tab)
         buttons.pack(side="bottom", fill="x", pady=(8, 0))
-        ttk.Button(buttons, text="Nova ação…", style="Action.TButton", command=self.new_action).pack(side="left")
-        ttk.Button(buttons, text="Registrar resultado…", style="Ghost.TButton", command=self.record_outcome).pack(side="left", padx=8)
-        menubutton = ttk.Menubutton(buttons, text="Status")
+        GlassButton(buttons, text="Nova ação…", style="Action.TButton", command=self.new_action).pack(side="left")
+        GlassButton(buttons, text="Registrar resultado…", style="Ghost.TButton", command=self.record_outcome).pack(side="left", padx=8)
+        menubutton = GlassMenubutton(buttons, text="Status")
         menubutton.configure(menu=self._status_menu(menubutton))
         menubutton.pack(side="left")
-        ttk.Button(buttons, text="Editar…", style="Ghost.TButton", command=self.edit_action).pack(side="left", padx=8)
-        ttk.Button(buttons, text="Analisar efeito com Javis", style="Action.TButton",
+        GlassButton(buttons, text="Editar…", style="Ghost.TButton", command=self.edit_action).pack(side="left", padx=8)
+        GlassButton(buttons, text="Analisar efeito com Javis", style="Action.TButton",
                    command=self.analyze_action).pack(side="right")
         pane = ttk.PanedWindow(tab, orient="vertical")
         pane.pack(fill="both", expand=True)
@@ -1082,16 +1109,16 @@ class JavisApp:
         row.pack(fill="x", pady=(0, 8))
         ttk.Label(row, text="Mostrar:").pack(side="left")
         self.decision_filter = tk.StringVar(value="Todas")
-        combo = ttk.Combobox(row, textvariable=self.decision_filter, state="readonly", width=14,
+        combo = GlassCombo(row, textvariable=self.decision_filter, state="readonly", width=14,
                              values=["Todas", "Vigentes", "Substituídas"])
         combo.pack(side="left", padx=8)
         self.style_combo(combo)
         combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh_decisions())
         buttons = ttk.Frame(tab)
         buttons.pack(side="bottom", fill="x", pady=(8, 0))
-        ttk.Button(buttons, text="Registrar decisão confirmada…", style="Action.TButton",
+        GlassButton(buttons, text="Registrar decisão confirmada…", style="Action.TButton",
                    command=self.new_decision).pack(side="left")
-        ttk.Button(buttons, text="Marcar como substituída", style="Ghost.TButton",
+        GlassButton(buttons, text="Marcar como substituída", style="Ghost.TButton",
                    command=self.supersede_decision).pack(side="left", padx=8)
         pane = ttk.PanedWindow(tab, orient="vertical")
         pane.pack(fill="both", expand=True)
@@ -1109,12 +1136,12 @@ class JavisApp:
         self._bind_context(self.decisions_tree, menu)
 
     def _build_plan(self, tab) -> None:
-        self._header(tab, "Plano", "Edite o plano diretamente. Cada gravação guarda uma cópia da versão anterior neste computador.")
+        self._header(tab, "Plano Bismarck", "Edite o plano diretamente. Cada gravação guarda uma cópia da versão anterior neste computador.")
         bar = ttk.Frame(tab)
         bar.pack(fill="x", pady=(0, 8))
-        ttk.Button(bar, text="Salvar plano", style="Action.TButton", command=self.save_plan).pack(side="left")
-        ttk.Button(bar, text="Recarregar do disco", style="Ghost.TButton", command=self.reload_plan).pack(side="left", padx=8)
-        ttk.Button(bar, text="Versões anteriores…", style="Ghost.TButton", command=self.show_plan_versions).pack(side="left")
+        GlassButton(bar, text="Salvar plano", style="Action.TButton", command=self.save_plan).pack(side="left")
+        GlassButton(bar, text="Recarregar do disco", style="Ghost.TButton", command=self.reload_plan).pack(side="left", padx=8)
+        GlassButton(bar, text="Versões anteriores…", style="Ghost.TButton", command=self.show_plan_versions).pack(side="left")
         self.dirty_label = ttk.Label(bar, text="", style="Bold.TLabel", foreground=hexc(self.theme["warn"]))
         self.dirty_label.pack(side="right")
         ttk.Label(tab, text=str(PLAN_FILE), style="Sub.TLabel").pack(side="bottom", anchor="w", pady=(6, 0))
@@ -1129,7 +1156,7 @@ class JavisApp:
         self._header(tab, "Histórico", "Eventos do Javis e análises anteriores. Selecione uma análise para reler a resposta completa.")
         buttons = ttk.Frame(tab)
         buttons.pack(side="bottom", fill="x", pady=(8, 0))
-        ttk.Button(buttons, text="Abrir análise na tela inicial", style="Action.TButton",
+        GlassButton(buttons, text="Abrir análise na tela inicial", style="Action.TButton",
                    command=self.reopen_analysis).pack(side="left")
         pane = ttk.PanedWindow(tab, orient="vertical")
         pane.pack(fill="both", expand=True)
@@ -1158,13 +1185,6 @@ class JavisApp:
         geo = getattr(self, "_page_geometry", None)
         if geo and self.page_host.winfo_width() < 2:
             self.page_host.place(x=geo[0], y=geo[1], width=geo[2], height=geo[3])
-        for name, label in self.nav_labels.items():
-            active = name == key
-            color = hexc(self.theme["text"]) if active else hexc(self.theme["muted"])
-            try:
-                label.configure(fg=color)
-            except tk.TclError:
-                pass
         self._highlight_nav(key)
         if key == "capture":
             try:
@@ -1173,17 +1193,9 @@ class JavisApp:
                 pass
 
     def _highlight_nav(self, key: str) -> None:
-        """Destaca o item ativo na barra lateral."""
-        t = self.theme
-        for name, holder in self.nav.items():
-            active = name == key
-            bg = hexc(t["accent"]) if active else self.glass_surface
-            fg = hexc(t["accent_fg"]) if active else hexc(t["muted"])
-            holder.configure(bg=bg)
-            try:
-                self.nav_labels[name].configure(bg=bg, fg=fg)
-            except tk.TclError:
-                pass
+        """Destaca o item ativo na barra lateral (com transição suave)."""
+        for name, item in self.nav.items():
+            item.set_active(name == key)
 
     def focus_input(self) -> None:
         self.show_page("capture")
@@ -1333,7 +1345,7 @@ class JavisApp:
             self.set_status("Selecione um registro primeiro.", "warn")
             return
         note_id = note.get("id")
-        self.analyze(f"Analise o registro {note_id} em foco e compare com o plano atual, as decisões, ações e resultados anteriores.",
+        self.analyze(f"Analise o registro {note_id} em foco e compare com o Plano Bismarck, as decisões, ações e resultados anteriores.",
                      note_id=note_id)
 
     def save_note(self) -> None:
@@ -1694,7 +1706,7 @@ class JavisApp:
                 backup_plan(previous)
             atomic_write(PLAN_FILE, content)
         self.state["plano"] = content
-        add_history(self.state, "Plano atualizado." if changed else "Plano conferido; sem alterações.")
+        add_history(self.state, "Plano Bismarck atualizado." if changed else "Plano Bismarck conferido; sem alterações.")
         save_state(self.state)
         self.plan_box.edit_modified(False)
         self.dirty_label.configure(text="")
@@ -1717,7 +1729,7 @@ class JavisApp:
         self.set_status("Plano recarregado do disco.", "ok")
 
     def show_plan_versions(self) -> None:
-        versions = sorted(BACKUP_DIR.glob("Plano_*.md"), reverse=True)[:50] if BACKUP_DIR.exists() else []
+        versions = sorted(BACKUP_DIR.glob("Plano_Bismarck_*.md"), reverse=True)[:50] if BACKUP_DIR.exists() else []
         if not versions:
             self.set_status("Ainda não há versões anteriores. Elas são criadas quando você salva uma alteração.", "warn")
             return
@@ -1835,7 +1847,7 @@ class JavisApp:
         typed = self.input_box.get("1.0", "end").strip()
         user_text = prompt_override if prompt_override is not None else typed
         if not user_text:
-            user_text = "Revise o estado atual do plano. Identifique mudanças relevantes, riscos e próximos passos."
+            user_text = "Revise o estado atual do Plano Bismarck. Identifique mudanças relevantes, riscos e próximos passos."
         if len(user_text) > 50000:
             self.set_status("Conteúdo muito longo para análise; será considerado um resumo do pedido.", "warn")
             user_text = user_text[:50000]
@@ -2215,7 +2227,7 @@ class JavisApp:
         if not path:
             return
         s = self.state
-        out = [f"# {s.get('projeto', 'Javis')} — exportação de {stamp()}", "", "## Plano", "",
+        out = [f"# {s.get('projeto', 'Plano Bismarck')} — exportação de {stamp()}", "", "## Plano", "",
                self.plan_box.get("1.0", "end").strip(), "", "## Decisões", ""]
         out += [f"- **{d.get('id')}** ({d.get('status', 'vigente')}, {br_date(d.get('data'))}): {d.get('texto')}"
                 + (f" — motivo: {d['motivo']}" if d.get("motivo") else "") for d in s["decisoes"]] or ["- Nenhuma."]
@@ -2303,13 +2315,13 @@ class FormDialog(tk.Toplevel):
             kind = spec.get("kind", "line")
             ttk.Label(frame, text=spec["label"], style="Bold.TLabel").pack(anchor="w", pady=(6, 0))
             if kind == "text":
-                widget = app.make_text(frame, height=spec.get("height", 4), font=app.f_base)
-                widget.pack(fill="both", expand=True, pady=(3, 0))
+                field, widget = app._scrolled_text(frame, height=spec.get("height", 4), font=app.f_base)
+                field.pack(fill="both", expand=True, pady=(3, 0))
                 widget.insert("1.0", spec.get("initial", ""))
                 self.inputs[spec["key"]] = (kind, widget)
             elif kind == "choice":
                 var = tk.StringVar(value=spec.get("initial") or spec["values"][0])
-                widget = ttk.Combobox(frame, textvariable=var, values=spec["values"], state="readonly")
+                widget = GlassCombo(frame, textvariable=var, values=spec["values"], state="readonly")
                 widget.pack(fill="x", pady=(3, 0))
                 app.style_combo(widget)
                 self.inputs[spec["key"]] = (kind, var)
@@ -2318,7 +2330,7 @@ class FormDialog(tk.Toplevel):
                 if kind == "date" and initial:
                     initial = br_date(initial)
                 var = tk.StringVar(value=initial)
-                widget = ttk.Entry(frame, textvariable=var)
+                widget = GlassEntry(frame, textvariable=var)
                 widget.pack(fill="x", pady=(3, 0))
                 widget.bind("<Return>", lambda _e: self._ok())
                 self.inputs[spec["key"]] = (kind, var)
@@ -2328,8 +2340,8 @@ class FormDialog(tk.Toplevel):
                 ttk.Label(frame, text=hint, style="Sub.TLabel", wraplength=app.px(480), justify="left").pack(anchor="w", pady=(2, 0))
         buttons = ttk.Frame(frame)
         buttons.pack(fill="x", pady=(16, 0))
-        ttk.Button(buttons, text=ok_text, style="Action.TButton", command=self._ok).pack(side="right")
-        ttk.Button(buttons, text="Cancelar", style="Ghost.TButton", command=self.destroy).pack(side="right", padx=(0, 8))
+        GlassButton(buttons, text=ok_text, style="Action.TButton", command=self._ok).pack(side="right")
+        GlassButton(buttons, text="Cancelar", style="Ghost.TButton", command=self.destroy).pack(side="right", padx=(0, 8))
         self.bind("<Escape>", lambda _e: self.destroy())
         self.bind("<Control-Return>", lambda _e: self._ok())
         self.update_idletasks()

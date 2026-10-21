@@ -36,18 +36,13 @@ if (-not $Python) {
 }
 
 $Desktop = [Environment]::GetFolderPath("Desktop")
-$ShortcutPath = Join-Path $Desktop "Javis.lnk"
-# Remove o atalho antigo, que ainda carregava o nome antigo.
-$OldShortcut = Join-Path $Desktop "Javis — Plano Bismarck.lnk"
-if (Test-Path -LiteralPath $OldShortcut) {
-    Remove-Item -LiteralPath $OldShortcut -Force
-}
+$ShortcutPath = Join-Path $Desktop "Javis — Plano Bismarck.lnk"
 $Shell = New-Object -ComObject WScript.Shell
 $Shortcut = $Shell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = $Python.Path
 $Shortcut.Arguments = (@($Python.Args) + ('"{0}"' -f $AppFile)) -join " "
 $Shortcut.WorkingDirectory = $OutputDir
-$Shortcut.Description = "Abrir o Javis local"
+$Shortcut.Description = "Abrir o Javis local do Plano Bismarck"
 $Shortcut.Save()
 
 Write-Output "Atalho criado: $ShortcutPath"

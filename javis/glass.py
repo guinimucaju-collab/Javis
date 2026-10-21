@@ -195,3 +195,42 @@ def compose(width: int, height: int, theme: dict, panels: list[dict]):
     for panel in panels:
         _glass(canvas, panel, theme, flat)
     return np.clip(canvas, 0, 255).astype(np.uint8).tobytes()
+
+
+def render_control(w: int, h: int, radius: int, top, bot, border, bg, hl: float = 0.0,
+                   glow=None, glow_a: float = 0.0, grad_px: int | None = None,
+                   inset: int = 2, bottom_hl: float = 0.0, circle: bool = False):
+    """Desenha um controle de vidro (botão, campo, caixa) com bordas suavizadas.
+
+    `bg` é a cor atrás do controle (a do vidro chapado), `top`/`bot` o degradê
+    do corpo, `border` o contorno de 1px, `hl` o brilho especular no alto,
+    `glow` o halo externo (hover/foco). Devolve bytes RGB ou None sem numpy.
+    """
+    if np is None:
+        return None
+    w, h = max(6, int(w)), max(6, int(h))
+    yy = np.arange(h, dtype=np.float32)[:, None]
+    xx = np.arange(w, dtype=np.float32)[None, :]
+    r = min(radius, (w - 2 * inset) / 2, (h - 2 * inset) / 2)
+    sdf = _sdf(xx, yy, inset, inset, w - 2 * inset, h - 2 * inset, r)
+    alpha = np.clip(0.5 - sdf, 0.0, 1.0)[..., None]
+    top_c, bot_c = np.asarray(top, np.float32), np.asarray(bot, np.float32)
+    span = float(grad_px) if grad_px else max(1.0, h - 2 * inset)
+    t = np.clip((np.arange(h, dtype=np.float32) - inset) / span, 0.0, 1.0)[:, None, None]
+    fill = top_c + (bot_c - top_c) * t
+    img = np.asarray(bg, np.float32) * (1.0 - alpha) + fill * alpha
+    if glow is not None and glow_a > 0:
+        halo = np.where(sdf > 0, np.exp(-np.maximum(sdf, 0) / 2.4), 0.0)[..., None] * glow_a
+        halo = halo * (1.0 - alpha)
+        img = img * (1.0 - halo) + np.asarray(glow, np.float32) * halo
+    ring = np.clip(1.0 - np.abs(sdf + 0.5), 0.0, 1.0)[..., None]
+    img = img * (1.0 - ring) + np.asarray(border, np.float32) * ring
+    if hl > 0:
+        lit = np.linspace(1.0, 0.0, h, dtype=np.float32)[:, None] ** 1.6
+        line = (ring[..., 0] * lit * hl)[..., None]
+        img = img * (1.0 - line) + 255.0 * line
+    if bottom_hl > 0:
+        lit = np.linspace(0.0, 1.0, h, dtype=np.float32)[:, None] ** 3
+        line = (ring[..., 0] * lit * bottom_hl)[..., None]
+        img = img * (1.0 - line) + 255.0 * line
+    return np.clip(img, 0, 255).astype(np.uint8).tobytes()

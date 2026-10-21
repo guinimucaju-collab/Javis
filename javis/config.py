@@ -6,7 +6,7 @@ import os
 import urllib.parse
 from pathlib import Path
 
-APP_NAME = "Javis"
+APP_NAME = "Javis — Plano Bismarck"
 APP_VERSION = "4.0"
 
 # O Javis só conversa com o Ollama neste computador. A variável abaixo existe
@@ -24,11 +24,9 @@ OLLAMA_URL = ollama_base() + "/api/chat"
 OLLAMA_TAGS_URL = ollama_base() + "/api/tags"
 
 LOCAL_DATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-DATA_DIR = Path(os.environ.get("JAVIS_DATA_DIR") or (LOCAL_DATA / "Javis"))
-# Pasta antiga, mantida só para migrar os dados existentes uma única vez.
-LEGACY_DATA_DIR = LOCAL_DATA / "JavisBismarck"
-STATE_FILE = DATA_DIR / "estado_javis.json"
-PLAN_FILE = DATA_DIR / "Plano_Javis.md"
+DATA_DIR = Path(os.environ.get("JAVIS_DATA_DIR") or (LOCAL_DATA / "JavisBismarck"))
+STATE_FILE = DATA_DIR / "estado_plano_bismarck.json"
+PLAN_FILE = DATA_DIR / "Plano_Bismarck.md"
 BACKUP_DIR = DATA_DIR / "versoes_plano"
 STATE_BACKUP_DIR = DATA_DIR / "backups_estado"
 LOG_FILE = DATA_DIR / "javis.log"

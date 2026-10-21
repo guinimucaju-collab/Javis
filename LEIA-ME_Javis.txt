@@ -1,18 +1,18 @@
-JAVIS
-=====
+JAVIS — PLANO BISMARCK
+======================
 
 O QUE É
-Javis é um aplicativo de janela para registrar textos e relatórios, analisar o plano, revisar decisões, sugerir próximos passos e acompanhar os resultados de ações.
+Javis é um aplicativo de janela para registrar textos e relatórios, analisar o Plano Bismarck, revisar decisões, sugerir próximos passos e acompanhar os resultados de ações.
 
 PRIVACIDADE
-- Notas, decisões, ações, análises e o plano editável ficam no computador em %LOCALAPPDATA%\Javis.
+- Notas, decisões, ações, análises e o plano editável ficam no computador em %LOCALAPPDATA%\JavisBismarck.
 - A análise usa o Ollama local em 127.0.0.1. O texto não é enviado a serviços de IA na internet.
 - A análise automática local fica ligada por padrão, como você pediu. Você pode desligá-la na tela inicial.
 - O Javis só sabe o que você registra ou importa. Para acompanhar o efeito de uma ação, registre o resultado observado e, se útil, marque uma data para rever.
 - Atualizações sugeridas não mudam o plano até você aprová-las. Cada salvamento do plano guarda a versão anterior.
 
 ABRIR
-- Use o atalho “Javis” na Área de Trabalho.
+- Use o atalho “Javis — Plano Bismarck” na Área de Trabalho.
 - Se ainda não houver atalho, execute Criar_Atalho_Javis.ps1 uma vez. O inicializador abre a janela sem console e encontra o Python instalado (Python Launcher pyw.exe ou pythonw.exe). Para usar outro Python, defina a variável de ambiente JAVIS_PYTHONW com o caminho do pythonw.exe.
 - Se a janela avisar que o Ollama está desconectado, abra o aplicativo Ollama. O Javis tenta reconectar sozinho a cada 20 segundos.
 
@@ -56,10 +56,10 @@ ARQUIVO PARA ABRIR PDF (OPCIONAL)
 - Para PDF, instale uma vez no PowerShell: py -m pip install pypdf
 
 ARQUIVOS LOCAIS
-- Dados e plano: %LOCALAPPDATA%\Javis
-- Cópias anteriores do plano: %LOCALAPPDATA%\Javis\versoes_plano (as 200 mais recentes)
-- Backup diário automático dos dados: %LOCALAPPDATA%\Javis\backups_estado (os 7 mais recentes). Se o arquivo de dados ficar ilegível, o Javis guarda uma cópia dele e recupera o backup mais recente.
-- Registro de erros: %LOCALAPPDATA%\Javis\javis.log (Ajuda > Abrir arquivo de log).
+- Dados e plano: %LOCALAPPDATA%\JavisBismarck
+- Cópias anteriores do plano: %LOCALAPPDATA%\JavisBismarck\versoes_plano (as 200 mais recentes)
+- Backup diário automático dos dados: %LOCALAPPDATA%\JavisBismarck\backups_estado (os 7 mais recentes). Se o arquivo de dados ficar ilegível, o Javis guarda uma cópia dele e recupera o backup mais recente.
+- Registro de erros: %LOCALAPPDATA%\JavisBismarck\javis.log (Ajuda > Abrir arquivo de log).
 - Arquivo > Fazer backup dos dados (.zip) e Arquivo > Exportar tudo em Markdown geram cópias fora da pasta de dados; elas contêm seus dados privados.
 - Aplicativo e inicializadores: pasta onde este guia está salvo.
 - O código está na subpasta javis/ (config, storage, llm, theme, glass, ui). O Javis.pyw é só a porta de entrada.

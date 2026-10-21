@@ -1,10 +1,10 @@
-# Javis
+# Javis — Plano Bismarck
 
-O Javis é um assistente local com interface para servir como segundo cérebro operacional. Ele recebe notas, perguntas, relatos e relatórios; analisa o contexto; sugere próximos passos; ajuda a revisar decisões; e acompanha resultados de ações registradas.
+O Javis é um assistente local com interface para servir como segundo cérebro operacional do Plano Bismarck. Ele recebe notas, perguntas, relatos e relatórios; analisa o contexto; sugere próximos passos; ajuda a revisar decisões; e acompanha resultados de ações registradas.
 
 ## Privacidade
 
-- O histórico, as decisões, as ações e o plano ficam no computador, em `%LOCALAPPDATA%\Javis`.
+- O histórico, as decisões, as ações e o plano ficam no computador, em `%LOCALAPPDATA%\JavisBismarck`.
 - As análises usam o Ollama local (`127.0.0.1`); o conteúdo não é enviado a um serviço de IA na internet pelo Javis. A variável `JAVIS_OLLAMA_URL` só é aceita se apontar para `127.0.0.1`, `localhost` ou `::1`.
 - O Javis só pode acompanhar informações que você registra ou importa. Ele procura relações possíveis entre relatos e ações anteriores, mesmo quando o relato não cita diretamente a ação.
 - Uma relação encontrada é uma hipótese, não prova de causa. O Javis pede confirmação antes de vincular relatos ou aprovar mudanças no plano.
@@ -53,7 +53,7 @@ O visual é em **vidro**: um cartão translúcido sobre um fundo aurora animado,
 
 ### Como o vidro é feito
 
-O Tk não deixa widgets transparentes. Por isso o Javis **pré-compõe** o vidro numa imagem de fundo: aurora, sombra suave, borda fosca com brilho e linha especular. O miolo de cada painel é uma cor chapada que depende só do tema, e a borda converge para ela; os widgets usam exatamente essa cor, então não há emenda. O efeito é um "vidro fosco" simulado, não um desfoque em tempo real do que está atrás da janela.
+O Tk não deixa widgets transparentes. Por isso o Javis **pré-compõe** o vidro numa imagem de fundo: aurora, sombra suave, borda fosca com brilho e linha especular. O miolo de cada painel é uma cor chapada que depende só do tema, e a borda converge para ela; os widgets usam exatamente essa cor, então não há emenda. O efeito é um "vidro fosco" simulado, não um desfoque em tempo real do que está atrás da janela. Os controles (botões, campos, lista suspensa, caixas, radios, barra de rolagem e menu lateral) são desenhados da mesma forma em `javis/widgets.py`, com transição suave de hover e foco.
 
 O efeito usa o `numpy` (`py -m pip install numpy`). Sem ele o Javis abre normalmente, mas com fundo liso e cartões chapados. A imagem só é recalculada quando o tamanho da janela ou o tema muda.
 
@@ -69,5 +69,5 @@ O efeito usa o `numpy` (`py -m pip install numpy`). Sem ele o Javis abre normalm
   - `ui.py` — a interface.
 - `Iniciar_Javis.ps1`: abre o aplicativo sem janela de console.
 - `Criar_Atalho_Javis.ps1`: cria o atalho na Área de Trabalho.
-- `Javis.ipynb`: alternativa em formato de notebook (somente leitura; não grava nada).
-- `%LOCALAPPDATA%\Javis`: dados privados, plano, versões anteriores (`versoes_plano`), backups diários (`backups_estado`) e `javis.log`.
+- `Javis_Plano_Bismarck.ipynb`: alternativa em formato de notebook (somente leitura; não grava nada).
+- `%LOCALAPPDATA%\JavisBismarck`: dados privados, plano, versões anteriores (`versoes_plano`), backups diários (`backups_estado`) e `javis.log`.
