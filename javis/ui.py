@@ -1820,7 +1820,8 @@ class JavisApp:
             self.set_status("O plano está vazio. Escreva o conteúdo antes de salvar.", "warn")
             return
         previous = read_text_safe(PLAN_FILE) if PLAN_FILE.exists() else ""
-        changed = previous != content
+        # As quebras de linha do Windows (CRLF) não contam como mudança.
+        changed = previous.replace("\r\n", "\n") != content.replace("\r\n", "\n")
         if changed:
             if previous:
                 backup_plan(previous)
@@ -2048,7 +2049,9 @@ class JavisApp:
     def _analysis_worker(self, job: int, cancel: threading.Event, payload: dict, context_json: str,
                          model_name: str, deep: bool) -> None:
         def put(event) -> None:
-            self.events.put((event[0], job, event[1]))
+            # O evento chega como (tipo, conteúdo); o "job" identifica a
+            # execução para descartar respostas atrasadas.
+            self.events.put((event[0], job, event[1] if len(event) > 1 else None))
         llm.stream_chat(model_name, payload, context_json, deep, cancel, put)
 
     def _poll_events(self) -> None:

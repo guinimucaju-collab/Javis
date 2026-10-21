@@ -235,7 +235,9 @@ def stream_chat(model_name: str, user_text: str, context_json: str, deep: bool, 
         result = "".join(chunks).strip()
         if not result:
             raise ValueError("O modelo local retornou uma resposta vazia.")
-        put(("done", result))
+        # O evento "done" leva a pergunta e a resposta: é com eles que a
+        # interface guarda a análise no histórico e monta a proposta do plano.
+        put(("done", (str(user_text.get("texto", ""))[:3000], result, "")))
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             msg = (f"O modelo {model_name} não está instalado no Ollama.\n\nNo PowerShell, execute: ollama pull {model_name}\n"

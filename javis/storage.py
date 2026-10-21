@@ -87,7 +87,9 @@ def _one_day():
 def atomic_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
-    with temp.open("w", encoding="utf-8") as handle:
+    # newline="\n": o arquivo fica igual ao texto que está na tela (sem CRLF
+    # do Windows), para a comparação "o plano mudou?" funcionar.
+    with temp.open("w", encoding="utf-8", newline="\n") as handle:
         handle.write(content)
         handle.flush()
         os.fsync(handle.fileno())
@@ -112,7 +114,10 @@ def next_id(prefix: str, records: list) -> str:
     nums = []
     for item in records:
         try:
-            nums.append(int(str(item.get("id", "")).split("-")[-1]))
+            ident = str(item.get("id", ""))
+            if not ident.startswith(prefix + "-"):
+                continue  # a numeração é por tipo (N-001, A-001, D-001...)
+            nums.append(int(ident.split("-")[-1]))
         except (ValueError, AttributeError):
             pass
     return f"{prefix}-{max(nums, default=0) + 1:03d}"
@@ -207,10 +212,10 @@ def migrate_legacy_data() -> str:
             shutil.move(str(LEGACY_PLAN_FILE), str(PLAN_FILE))
         old_versions = LEGACY_DATA_DIR / "versoes_plano"
         if old_versions.exists():
-            old_versions.mkdir(parents=True, exist_ok=True)
-            for item in old_versions.glob("Plano_Bismarck_*.md"):
-                item.rename(old_versions / item.name.replace("Plano_Bismarck_", "Plano_"))
-            shutil.rmtree(old_versions, ignore_errors=True)
+            destino = DATA_DIR / "versoes_plano"
+            destino.mkdir(parents=True, exist_ok=True)
+            for item in old_versions.glob("*.md"):
+                item.rename(destino / item.name.replace("Plano_Bismarck_", "Plano_"))
         for folder in ("backups_estado",):
             old_folder = LEGACY_DATA_DIR / folder
             if old_folder.exists():
@@ -264,6 +269,13 @@ def load_state() -> tuple[dict, str]:
     else:
         state["plano"] = state.get("plano") or make_initial_plan(state)
         PLAN_FILE.write_text(state["plano"], encoding="utf-8")
+    if not STATE_FILE.exists():
+        # Primeira abertura: cria o arquivo de dados na hora, para o arquivo
+        # já existir (e poder ser inspecionado ou copiado) depois do primeiro uso.
+        try:
+            save_state(state)
+        except OSError:
+            log.exception("Falha ao criar o arquivo de dados")
     return state, notice
 
 
