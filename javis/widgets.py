@@ -26,12 +26,14 @@ from .theme import darken, glass_surface, glass_well, hexc, is_light, lighten, m
 class _Skin:
     scale = 1.0
     light = False
+    glass = True          # False desenha tudo chapado (computadores fracos)
     f_base = f_bold = f_input = None
 
-    def update(self, theme: dict, scale: float, f_base, f_bold, f_input) -> None:
+    def update(self, theme: dict, scale: float, f_base, f_bold, f_input, glass: bool = True) -> None:
         self.theme = theme
         self.scale = scale
         self.light = is_light(theme)
+        self.glass = bool(glass)
         self.flat = glass_surface(theme)
         self.well = glass_well(theme)
         self.text = theme["text"]
@@ -55,9 +57,9 @@ def ground(name: str):
     return {"flat": SKIN.flat, "well": SKIN.well, "banner": SKIN.banner}.get(name, SKIN.flat)
 
 
-def set_skin(theme: dict, scale: float, f_base, f_bold, f_input) -> None:
+def set_skin(theme: dict, scale: float, f_base, f_bold, f_input, glass: bool = True) -> None:
     """Troca o tema/fonte de todos os controles de vidro."""
-    SKIN.update(theme, scale, f_base, f_bold, f_input)
+    SKIN.update(theme, scale, f_base, f_bold, f_input, glass=glass)
     _IMG.clear()
     for widget in list(_live):
         try:
@@ -68,6 +70,8 @@ def set_skin(theme: dict, scale: float, f_base, f_bold, f_input) -> None:
 
 def control_image(master, w: int, h: int, **kw):
     """PhotoImage de um controle, com cache. None se não houver numpy."""
+    if not SKIN.glass:
+        return None
     key = (int(w), int(h), tuple(sorted(kw.items())))
     img = _IMG.get(key)
     if img is not None:

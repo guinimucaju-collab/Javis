@@ -172,6 +172,7 @@ def migrate_state(state: dict) -> dict:
     state.setdefault("acoes", [])
     state.setdefault("analises", [])
     state.setdefault("historico", [])
+    state.setdefault("vidro", True)   # efeito de vidro ligado por padrão
     # Estados antigos ainda traziam o nome antigo do projeto.
     if state.get("projeto") in {"Plano Bismarck", "Bismarck"}:
         state["projeto"] = "Javis"

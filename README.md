@@ -44,6 +44,7 @@ O visual é em **vidro**: um cartão translúcido sobre um fundo aurora animado,
 - Navegação lateral com realce ao passar o mouse, menus (Arquivo, Editar, Exibir, IA, Ajuda) e atalhos de teclado (Ajuda › Atalhos de teclado).
 - Três temas: **Aurora** (padrão), **Meia-noite** e **Aurora clara**. O tema é escolhido em **Configurações** (última seção da lateral), fica salvo e volta na próxima abertura.
 - Tamanho de fonte ajustável (`Ctrl++`, `Ctrl+-`, `Ctrl+0`) e suporte a telas de alta resolução.
+- **Efeito de vidro opcional** (Configurações › Desempenho): em computadores fracos, desligue-o e a janela fica com cores sólidas, sem aurora, sombras ou reflexos — o Javis passa a ser bem mais leve.
 - Listas ordenáveis, com filtros, menu de botão direito e destaque de ações com revisão vencida.
 - Análises com títulos destacados e IDs clicáveis; botão **Parar** (`Esc`) para interromper a resposta.
 - Notificações flutuantes ao salvar registro, plano, exportação e backup.
@@ -57,7 +58,7 @@ O Tk não deixa widgets transparentes. Por isso o Javis **pré-compõe** o vidro
 
 **Fundo transparente (Windows 10/11).** Em Configurações (ou em Exibir > "Fundo transparente (acrílico)") a janela pode deixar de ter fundo próprio: o que está fora dos painéis de vidro mostra o desktop desfocado pelo acrílico do Windows. É feito com `-transparentcolor` (cor-chave) mais o desfoque do DWM, em `javis/acrylic.py`. **Fica desligado por padrão**, para o fundo ser sempre a aurora do tema; ligado, ele mostra a cor do desktop (e não a do tema) atrás da janela. Limitações: a cor-chave só admite transparente ou opaco, então as bordas dos painéis não têm suavização nem sombra; cliques nas áreas transparentes passam para a janela de trás; e em alguns PCs o acrílico pesa ao arrastar a janela. Se algo incomodar, desmarque a opção e volta o fundo aurora.
 
-O efeito usa o `numpy` (`py -m pip install numpy`). Sem ele o Javis abre normalmente, mas com fundo liso e cartões chapados. A imagem só é recalculada quando o tamanho da janela ou o tema muda.
+O efeito usa o `numpy` (`py -m pip install numpy`). Sem ele — ou com o efeito de vidro desligado nas Configurações — o Javis abre normalmente, mas com fundo liso e cartões chapados. A imagem só é recalculada quando o tamanho da janela ou o tema muda.
 
 ## Arquivos
 

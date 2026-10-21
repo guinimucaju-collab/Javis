@@ -136,6 +136,10 @@ class JavisApp:
         # desfocado por trás) é opcional e fica desligado por padrão.
         self.acrylic_var = tk.BooleanVar(master=root,
                                          value=bool(self.state.get("acrilico", False)) and acrylic.IS_WINDOWS)
+        # Efeito de vidro: pesado em máquinas fracas. Desligado, tudo fica
+        # chapado (cores sólidas) e nada é renderizado com numpy.
+        self.glass_on = bool(self.state.get("vidro", True))
+        self.glass_var = tk.BooleanVar(master=root, value=self.glass_on)
         self._colors_key = None     # evita reaplicar as mesmas cores
         self._laid_size = None      # último tamanho de janela posicionado
         self._layout_pending = False
@@ -478,7 +482,19 @@ class JavisApp:
 
     def _sync_skin(self) -> None:
         """Entrega tema e fontes aos controles de vidro (eles se repintam sozinhos)."""
-        widgets.set_skin(self.theme, self.scale, self.f_base, self.f_bold, self.f_input)
+        widgets.set_skin(self.theme, self.scale, self.f_base, self.f_bold, self.f_input, glass=self.glass_on)
+
+    def toggle_glass(self) -> None:
+        """Liga/desliga o efeito de vidro (para computadores mais fracos)."""
+        want = bool(self.glass_var.get())
+        self.glass_on = want
+        self.state["vidro"] = want
+        save_state(self.state)
+        self._colors_key = None
+        self._scene_key = None
+        self._sync_skin()
+        self._layout()
+        self.set_status("Efeito de vidro ligado." if want else "Efeito de vidro desligado (visual simples).", "ok")
 
     def _render_backdrop(self) -> None:
         """Desenha o fundo aurora com os painéis de vidro (só se algo mudou)."""
@@ -487,13 +503,15 @@ class JavisApp:
         self._apply_glass_colors()
         width = max(320, self.backdrop.winfo_width())
         height = max(240, self.backdrop.winfo_height())
-        key = (self.theme_name, width, height, self.acrylic_on,
+        key = (self.theme_name, width, height, self.acrylic_on, self.glass_on,
                tuple(tuple(sorted(p.items())) for p in self._glass_panels))
         if key == self._scene_key:
             return
         try:
-            rgb = glass.compose(width, height, self.theme, self._glass_panels,
-                                key=acrylic.KEY_RGB if self.acrylic_on else None)
+            rgb = None
+            if self.glass_on:
+                rgb = glass.compose(width, height, self.theme, self._glass_panels,
+                                    key=acrylic.KEY_RGB if self.acrylic_on else None)
             self.backdrop.delete("all")
             if rgb is None:
                 self._draw_plain_backdrop()
@@ -509,8 +527,8 @@ class JavisApp:
             log.exception("Falha ao desenhar o fundo")
 
     def _draw_plain_backdrop(self) -> None:
-        """Sem numpy: fundo liso e cartões chapados (nada pesado, nada trava)."""
-        if not getattr(self, "_warned_numpy", False):
+        """Fundo liso e cartões chapados: sem vidro (e também sem numpy)."""
+        if self.glass_on and not getattr(self, "_warned_numpy", False):
             self._warned_numpy = True
             log.warning("numpy não encontrado: usando visual simples (py -m pip install numpy ativa o vidro).")
         self.backdrop.configure(bg=hexc(acrylic.KEY_RGB if self.acrylic_on else self.theme["bg"]))
@@ -1239,6 +1257,14 @@ class JavisApp:
         if acrylic.IS_WINDOWS:
             GlassCheck(tab, text="Usar fundo transparente (acrílico do Windows)",
                        variable=self.acrylic_var, command=self.toggle_acrylic).pack(anchor="w", pady=3)
+
+        # --- Desempenho
+        ttk.Label(tab, text="Desempenho", style="Bold.TLabel").pack(anchor="w", pady=(20, 0))
+        self._wrap_label(tab, "O efeito de vidro desenha a aurora, as sombras e os reflexos de cada controle. "
+                              "Ele é bonito, mas pesa: em computadores fracos ou sem numpy, desligue-o. A janela "
+                              "fica com cores sólidas e o Javis fica bem mais leve.").pack(fill="x", pady=(2, 6))
+        GlassCheck(tab, text="Efeito de vidro (desligue em máquinas fracas)",
+                   variable=self.glass_var, command=self.toggle_glass).pack(anchor="w", pady=3)
 
         # --- Texto
         ttk.Label(tab, text="Texto", style="Bold.TLabel").pack(anchor="w", pady=(20, 0))

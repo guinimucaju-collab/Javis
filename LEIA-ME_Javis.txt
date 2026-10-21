@@ -50,6 +50,7 @@ O VISUAL EM VIDRO
 - A janela tem um cartão translúcido sobre um fundo aurora, com cantos arredondados e borda especular.
 - O fundo é desenhado pelo próprio Javis: o Tk não sabe deixar widgets transparentes, então o vidro é montado antes e a cor dos campos é casada com a dele. O resultado é contínuo, sem emenda.
 - Para ver o vidro, instale o numpy uma vez no PowerShell: py -m pip install numpy. Sem ele o Javis funciona normalmente, só com fundo liso e cartões chapados.
+- COMPUTADORES FRACOS: em “Configurações › Desempenho”, desmarque “Efeito de vidro”. A janela passa a usar cores sólidas (sem aurora, sombras ou reflexos) e o Javis fica bem mais leve. A escolha fica salva.
 
 ARQUIVO PARA ABRIR PDF (OPCIONAL)
 - TXT, MD, CSV, JSON e DOCX já abrem sem instalar nada.
