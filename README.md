@@ -55,6 +55,8 @@ O visual é em **vidro**: um cartão translúcido sobre um fundo aurora animado,
 
 O Tk não deixa widgets transparentes. Por isso o Javis **pré-compõe** o vidro numa imagem de fundo: aurora, sombra suave, borda fosca com brilho e linha especular. O miolo de cada painel é uma cor chapada que depende só do tema, e a borda converge para ela; os widgets usam exatamente essa cor, então não há emenda. O efeito é um "vidro fosco" simulado, não um desfoque em tempo real do que está atrás da janela. Os controles (botões, campos, lista suspensa, caixas, radios, barra de rolagem e menu lateral) são desenhados da mesma forma em `javis/widgets.py`, com transição suave de hover e foco.
 
+**Fundo transparente (Windows 10/11).** Em Exibir > "Fundo transparente (acrílico)" (ligado por padrão no Windows) a janela deixa de ter fundo próprio: o que está fora dos painéis de vidro mostra o desktop desfocado pelo acrílico do Windows. É feito com `-transparentcolor` (cor-chave) mais o desfoque do DWM, em `javis/acrylic.py`. Limitações: a cor-chave só admite transparente ou opaco, então as bordas dos painéis não têm suavização nem sombra; cliques nas áreas transparentes passam para a janela de trás; e em alguns PCs o acrílico pesa ao arrastar a janela. Se algo incomodar, desmarque a opção e volta o fundo aurora.
+
 O efeito usa o `numpy` (`py -m pip install numpy`). Sem ele o Javis abre normalmente, mas com fundo liso e cartões chapados. A imagem só é recalculada quando o tamanho da janela ou o tema muda.
 
 ## Arquivos

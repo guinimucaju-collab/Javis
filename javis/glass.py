@@ -20,7 +20,7 @@ try:
 except ImportError:  # pragma: no cover - depende do ambiente
     np = None
 
-from .theme import glass_surface, is_light
+from .theme import glass_surface, is_light, lighten
 
 HAS_NUMPY = np is not None
 
@@ -138,7 +138,7 @@ def _shadow(canvas, panel: dict, theme: dict) -> None:
     canvas[y0:y1, x0:x1] *= (1.0 - strength * mask)
 
 
-def _glass(canvas, panel: dict, theme: dict, flat) -> None:
+def _glass(canvas, panel: dict, theme: dict, flat, key=None) -> None:
     height, width = canvas.shape[:2]
     x, y, w, h = (int(panel[k]) for k in ("x", "y", "w", "h"))
     if w <= 0 or h <= 0:
@@ -158,19 +158,26 @@ def _glass(canvas, panel: dict, theme: dict, flat) -> None:
 
     # Vidro fosco: o que está atrás, desfocado, saturado e com um véu branco
     # mais forte em cima (luz vindo de cima).
-    blur_r = max(2, int(theme.get("glass_blur", 26)) // 6)
-    frosted = _blur_low(region, blur_r * 4, 2)
-    sat = float(theme.get("glass_saturation", 1.28))
-    grey = frosted.mean(axis=2, keepdims=True)
-    frosted = np.clip(grey + (frosted - grey) * sat, 0, 255)
-    tint = float(theme.get("glass_tint", 0.085)) * 2.2
-    veil = tint * np.linspace(1.0, 0.5, rh, dtype=np.float32)[:, None, None]
-    veiled = frosted * (1.0 - veil) + 255.0 * veil
+    if key is None:
+        blur_r = max(2, int(theme.get("glass_blur", 26)) // 6)
+        frosted = _blur_low(region, blur_r * 4, 2)
+        sat = float(theme.get("glass_saturation", 1.28))
+        grey = frosted.mean(axis=2, keepdims=True)
+        frosted = np.clip(grey + (frosted - grey) * sat, 0, 255)
+        tint = float(theme.get("glass_tint", 0.085)) * 2.2
+        veil = tint * np.linspace(1.0, 0.5, rh, dtype=np.float32)[:, None, None]
+        veiled = frosted * (1.0 - veil) + 255.0 * veil
+    else:  # transparente: a borda é um vidro claro e liso (o fundo real é do Windows)
+        rim_rgb = lighten(tuple(int(v) for v in flat), 0.55 if is_light(theme) else 0.20)
+        top_glow = np.linspace(1.0, 0.55, rh, dtype=np.float32)[:, None, None]
+        veiled = np.asarray(flat, np.float32) + (np.asarray(rim_rgb, np.float32) - np.asarray(flat, np.float32)) * top_glow
 
     # Do miolo (cor chapada) até a borda (vidro fosco), em `rim` pixels.
     t = np.clip(depth / rim, 0.0, 1.0)
     inner = (t * t * (3.0 - 2.0 * t))[..., None]
     edge = float(theme.get("glass_edge", 0.60 if is_light(theme) else 0.78))
+    if key is not None:
+        edge = 1.0
     mixed = flat + (veiled - flat) * (edge * (1.0 - inner))
 
     # Linha especular: clara em cima, mais fraca embaixo, seguindo o contorno
@@ -180,20 +187,32 @@ def _glass(canvas, panel: dict, theme: dict, flat) -> None:
     line = (ring * (0.22 + 0.45 * lit))[..., None]
     mixed = mixed * (1.0 - line) + 255.0 * line
 
-    region[:] = mixed * alpha + region * (1.0 - alpha)
+    if key is not None:
+        # Sem meio-termo: o Windows só entende "transparente" ou "opaco" por cor-chave.
+        region[:] = np.where(alpha >= 0.5, mixed, region)
+    else:
+        region[:] = mixed * alpha + region * (1.0 - alpha)
 
 
-def compose(width: int, height: int, theme: dict, panels: list[dict]):
-    """Devolve os bytes RGB da cena (fundo + sombras + vidro) ou None sem numpy."""
+def compose(width: int, height: int, theme: dict, panels: list[dict], key=None):
+    """Devolve os bytes RGB da cena (fundo + sombras + vidro) ou None sem numpy.
+
+    Com `key` (RGB), não desenha fundo nem sombra: tudo fora dos painéis fica
+    nessa cor-chave, que o Windows torna transparente.
+    """
     if np is None:
         return None
     width, height = max(1, int(width)), max(1, int(height))
-    canvas = _aurora(width, height, theme)
     flat = np.asarray(glass_surface(theme), np.float32)
+    if key is None:
+        canvas = _aurora(width, height, theme)
+        for panel in panels:
+            _shadow(canvas, panel, theme)
+    else:
+        canvas = np.empty((height, width, 3), np.float32)
+        canvas[:] = key
     for panel in panels:
-        _shadow(canvas, panel, theme)
-    for panel in panels:
-        _glass(canvas, panel, theme, flat)
+        _glass(canvas, panel, theme, flat, key)
     return np.clip(canvas, 0, 255).astype(np.uint8).tobytes()
 
 

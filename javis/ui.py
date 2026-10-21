@@ -21,7 +21,7 @@ from datetime import date, datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from . import glass, llm, widgets
+from . import acrylic, glass, llm, widgets
 from .widgets import (GlassButton, GlassCheck, GlassCombo, GlassEntry, GlassField, GlassMenubutton, GlassNav,
                       GlassScrollbar)
 from .config import (
@@ -129,6 +129,8 @@ class JavisApp:
         self._glass_panels: list[dict] = []
         self._backdrop_photo: tk.PhotoImage | None = None
         self._scene_key = None      # evita redesenhar a mesma cena
+        self.acrylic_on = False     # janela realmente transparente (Windows)
+        self.acrylic_var = tk.BooleanVar(master=root, value=bool(self.state.get("acrilico", True)) and acrylic.IS_WINDOWS)
         self._colors_key = None     # evita reaplicar as mesmas cores
         self._laid_size = None      # último tamanho de janela posicionado
         self._layout_pending = False
@@ -154,6 +156,8 @@ class JavisApp:
         self.apply_theme()
         self.refresh_all()
         self.show_page("capture")
+        if self.acrylic_var.get():
+            self.root.after(250, lambda: self._set_acrylic(True))
 
         draft = self.state.get("rascunho", "")
         if draft:
@@ -231,6 +235,8 @@ class JavisApp:
         self.state["tema"] = name
         save_state(self.state)
         self.apply_theme()
+        if self.acrylic_on:
+            self._set_acrylic(True)
         self.set_status(f"Tema {self.theme['label']} aplicado.", "ok")
 
     def toggle_theme(self) -> None:
@@ -242,7 +248,7 @@ class JavisApp:
         t, s, px = self.theme, self.style, self.px
         dark = self.theme_name != "aurora-clara"
         s.theme_use("clam")
-        self.root.configure(bg=hexc(t["bg"]))
+        self.root.configure(bg=hexc(acrylic.KEY_RGB if self.acrylic_on else t["bg"]))
         s.configure(".", background=hexc(t["bg"]), foreground=hexc(t["text"]), font=self.f_base,
                     bordercolor=hexc(t["surface"]), lightcolor=hexc(t["bg"]), darkcolor=hexc(t["bg"]),
                     troughcolor=hexc(t["bg"]), focuscolor=hexc(t["accent"]), insertcolor=hexc(t["text"]))
@@ -432,6 +438,36 @@ class JavisApp:
         self.glass_well = hexc(self.well_color)
         self.glass_line = hexc(darken(self.glass_color, 0.25 if is_light(t) else 0.55))
 
+    def _acrylic_tint(self) -> tuple:
+        """(cor do véu, intensidade 0-255, tema escuro?) do acrílico."""
+        if is_light(self.theme):
+            return (236, 242, 255), 150, False
+        return (12, 14, 30), 150, True
+
+    def _set_acrylic(self, on: bool) -> None:
+        """Liga/desliga o fundo realmente transparente (acrílico do Windows)."""
+        key_hex = hexc(acrylic.KEY_RGB)
+        if on and acrylic.IS_WINDOWS:
+            tint, alpha, dark = self._acrylic_tint()
+            ok = acrylic.enable(self.root, tint, alpha, dark)
+            self.acrylic_on = True
+            self.backdrop.configure(bg=key_hex)
+            if not ok:
+                self.set_status("Desfoque do Windows indisponível: só a transparência foi ativada.", "warn")
+        else:
+            acrylic.disable(self.root)
+            self.acrylic_on = False
+            self.root.configure(bg=hexc(self.theme["bg"]))
+            self.backdrop.configure(bg=hexc(self.theme["bg"]))
+        self._scene_key = None
+        self._layout()
+
+    def toggle_acrylic(self) -> None:
+        want = bool(self.acrylic_var.get())
+        self.state["acrilico"] = want
+        save_state(self.state)
+        self._set_acrylic(want)
+
     def _sync_skin(self) -> None:
         """Entrega tema e fontes aos controles de vidro (eles se repintam sozinhos)."""
         widgets.set_skin(self.theme, self.scale, self.f_base, self.f_bold, self.f_input)
@@ -443,12 +479,13 @@ class JavisApp:
         self._apply_glass_colors()
         width = max(320, self.backdrop.winfo_width())
         height = max(240, self.backdrop.winfo_height())
-        key = (self.theme_name, width, height,
+        key = (self.theme_name, width, height, self.acrylic_on,
                tuple(tuple(sorted(p.items())) for p in self._glass_panels))
         if key == self._scene_key:
             return
         try:
-            rgb = glass.compose(width, height, self.theme, self._glass_panels)
+            rgb = glass.compose(width, height, self.theme, self._glass_panels,
+                                key=acrylic.KEY_RGB if self.acrylic_on else None)
             self.backdrop.delete("all")
             if rgb is None:
                 self._draw_plain_backdrop()
@@ -468,7 +505,7 @@ class JavisApp:
         if not getattr(self, "_warned_numpy", False):
             self._warned_numpy = True
             log.warning("numpy não encontrado: usando visual simples (py -m pip install numpy ativa o vidro).")
-        self.backdrop.configure(bg=hexc(self.theme["bg"]))
+        self.backdrop.configure(bg=hexc(acrylic.KEY_RGB if self.acrylic_on else self.theme["bg"]))
         edge = hexc(lighten(self.glass_color, 0.25))
         for p in self._glass_panels:
             self.backdrop.create_rectangle(p["x"], p["y"], p["x"] + p["w"], p["y"] + p["h"],
@@ -679,6 +716,10 @@ class JavisApp:
         m.add_separator()
         for name, spec in THEMES.items():
             m.add_command(label=spec["label"], command=lambda n=name: self.set_theme(n))
+        if acrylic.IS_WINDOWS:
+            m.add_separator()
+            m.add_checkbutton(label="Fundo transparente (acrílico)", variable=self.acrylic_var,
+                              command=self.toggle_acrylic)
         m.add_separator()
         m.add_command(label="Aumentar fonte", accelerator="Ctrl++", command=lambda: self.set_font_size(self.base_size + 1))
         m.add_command(label="Diminuir fonte", accelerator="Ctrl+-", command=lambda: self.set_font_size(self.base_size - 1))
